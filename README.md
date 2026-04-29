@@ -19,9 +19,9 @@ without Codex-specific adapter text.
 
 This is intentionally a conversion and development harness, not just a generated
 skill dump. Tracked development setup such as `.devcontainer/` is source for
-reproducing the environment. The repo also checks in `.claude/skills` so a fresh
-clone is immediately a Claude workspace with the converted ZSkills available.
-Per-user client state such as `.claude/settings.local.json` and
+reproducing the environment. The repo also checks in `.claude/skills` and
+`.codex/skills` so a fresh clone is immediately usable by both Claude and Codex.
+Per-user client state such as `.claude/settings.local.json` and local
 `.claude/zskills-config.json` / `.codex/zskills-config.json` stays ignored and
 should be recreated locally.
 
@@ -68,6 +68,7 @@ regenerated as needed.
 | `local-patches/` | Documented local upstream patch queue entries. |
 | `.devcontainer/` | Reproducible development environment setup. |
 | `.claude/skills/` | Checked-in Claude-facing generated skills for clone-ready use. |
+| `.codex/skills/` | Checked-in Codex-facing generated skills for clone-ready use. |
 | `.claude/README.md` | Documents local Claude state boundaries. |
 
 ## Prerequisites
@@ -102,6 +103,10 @@ Install Codex skills to `$CODEX_HOME/skills`:
 ```bash
 bash scripts/zskills-install.sh --client codex
 ```
+
+For Codex, a clone of this repository also exposes project-local skills from
+`.codex/skills`. The global install is still useful when you want the skills
+available outside this repository.
 
 Install Claude skills into the project `.claude/skills` directory:
 
@@ -184,6 +189,7 @@ Verified:
 - all 22 generated skills have valid frontmatter
 - generated Claude skills match upstream originals exactly
 - generated Codex skills differ only by adapter block or declared overlays
+- checked-in `.claude/skills` and `.codex/skills` match fresh generated output
 - direct, cherry-pick, and PR landing modes are preserved in helpers and skill
   instructions
 - tracking filesystem rules are preserved and tested

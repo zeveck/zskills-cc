@@ -47,6 +47,16 @@ if [ -d "$ROOT/.claude/skills" ]; then
   fi
 fi
 
+if [ -d "$ROOT/.codex/skills" ]; then
+  tmp_codex=$(mktemp -d)
+  run bash "$ROOT/scripts/generate-codex-skills.sh" --client codex --output "$tmp_codex"
+  if ! diff -qr "$tmp_codex" "$ROOT/.codex/skills" >/tmp/zskills-fidelity-codex-drift.out; then
+    cat /tmp/zskills-fidelity-codex-drift.out
+    echo "FAILED: checked-in .codex/skills drifted from generated Codex skills" >&2
+    exit 1
+  fi
+fi
+
 if rg "ZSKILLS_CODEX_COMPAT|Codex Compatibility|Codex-installed|Codex adapter" "$ROOT/build/claude-skills" >/tmp/zskills-fidelity-claude-leak.out; then
   cat /tmp/zskills-fidelity-claude-leak.out
   echo "FAILED: generated Claude skills contain Codex adapter text" >&2
