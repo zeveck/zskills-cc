@@ -2,7 +2,8 @@ build/
 
 .zskills/
 reports/PLAN_REPORT.md
-.claude/
+.claude/*
+!.claude/README.md
 .playwright/output/
 
 __pycache__/

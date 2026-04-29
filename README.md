@@ -9,6 +9,12 @@ The project name "CC" is shorthand for Claude/Codex compatibility: one source
 tree generates a Codex install with compatibility adapters and a Claude install
 without Codex-specific adapter text.
 
+This is intentionally a conversion and development harness, not just a generated
+skill dump. Tracked development setup such as `.devcontainer/` is source for
+reproducing the environment. Generated or per-user client state such as
+`.claude/skills/` and `.claude/settings.local.json` stays ignored and should be
+recreated from the scripts.
+
 The goal is not to fork the skill bodies by hand. The source of truth is:
 
 - upstream ZSkills checkout
@@ -48,6 +54,8 @@ regenerated as needed.
 | `plans/` | Fidelity improvement plan. |
 | `reports/` | Execution report and verification record. |
 | `local-patches/` | Documented local upstream patch queue entries. |
+| `.devcontainer/` | Reproducible development environment setup. |
+| `.claude/README.md` | Documents ignored local Claude state. |
 
 ## Prerequisites
 
