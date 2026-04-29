@@ -1,5 +1,13 @@
 # ZSkills CC
 
+> **Compatibility preview.** This repository is a Codex-converted
+> Claude/Codex compatibility version of
+> [`github.com/zeveck/zskills`](https://github.com/zeveck/zskills). For the
+> canonical Claude-only release, use upstream ZSkills. This repo is intended for
+> testing and developing the cross-client conversion, and its checked-in
+> `.claude/skills` directory is a generated distribution copy verified against
+> the conversion pipeline.
+
 This repository is a Codex-converted version of
 [`zeveck/zskills`](https://github.com/zeveck/zskills). It is meant to preserve
 the original ZSkills intent while making the workflows usable from both Codex
