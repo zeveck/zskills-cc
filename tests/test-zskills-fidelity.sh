@@ -27,7 +27,8 @@ run bash -n \
 
 run python -m py_compile \
   "$ROOT/scripts/generate-codex-skills.py" \
-  "$ROOT/scripts/verify-generated-zskills.py"
+  "$ROOT/scripts/verify-generated-zskills.py" \
+  "$ROOT/scripts/verify-zskills-codex.py"
 
 run bash "$ROOT/scripts/generate-codex-skills.sh" --client codex --output "$ROOT/build/codex-skills"
 run bash "$ROOT/scripts/generate-codex-skills.sh" --client claude --output "$ROOT/build/claude-skills"

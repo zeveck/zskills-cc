@@ -5,6 +5,8 @@ reports/PLAN_REPORT.md
 .claude/settings.local.json
 .claude/zskills-config.json
 .claude/zskills-config.schema.json
+.codex/zskills-config.json
+.codex/zskills-config.schema.json
 .playwright/output/
 
 __pycache__/

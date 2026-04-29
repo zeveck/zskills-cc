@@ -14,6 +14,9 @@ from pathlib import Path
 
 
 SPECIAL_SKILL_SOURCES = {
+    "add-block": Path("block-diagram/add-block"),
+    "add-example": Path("block-diagram/add-example"),
+    "model-design": Path("block-diagram/model-design"),
     "playwright-cli": Path(".claude/skills/playwright-cli"),
 }
 
@@ -23,6 +26,10 @@ SUPPORT_SCRIPTS = [
     Path("scripts/zskills-scheduler.sh"),
     Path("scripts/zskills-run-due.sh"),
     Path("scripts/zskills-install.sh"),
+]
+
+CODEX_ROOT_FILES = [
+    Path("scripts/verify-zskills-codex.py"),
 ]
 
 
@@ -167,6 +174,12 @@ def generate(args: argparse.Namespace) -> int:
 
     if args.client == "codex":
         shutil.copyfile(adapter_path, output / "ZSKILLS_CODEX_COMPAT.md")
+        for rel in CODEX_ROOT_FILES:
+            src = Path.cwd() / rel
+            if src.exists():
+                dst = output / src.name
+                shutil.copyfile(src, dst)
+                dst.chmod(0o755)
 
     generation_manifest = {
         "client": args.client,

@@ -12,6 +12,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+SPECIAL_SKILL_SOURCES = {
+    "add-block": Path("block-diagram/add-block"),
+    "add-example": Path("block-diagram/add-example"),
+    "model-design": Path("block-diagram/model-design"),
+    "playwright-cli": Path(".claude/skills/playwright-cli"),
+}
+
 
 def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -184,6 +191,14 @@ def verify_preflight_inventory(project_root: Path, generated_root: Path, errors:
                 errors.append(f"{skill_dir.name}: dangerous {operation} callsite is not in preflight inventory")
 
 
+def expected_skill_names(upstream: Path) -> set[str]:
+    names = {p.parent.name for p in (upstream / "skills").glob("*/SKILL.md")}
+    for name, rel in SPECIAL_SKILL_SOURCES.items():
+        if (upstream / rel / "SKILL.md").exists():
+            names.add(name)
+    return names
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
@@ -230,7 +245,9 @@ def main() -> int:
                 verify_skill_file(path, "claude", errors)
 
             manifest = json.loads((codex_tmp / "generation-manifest.json").read_text())
-            require(len(manifest.get("skills", [])) == 19, "Codex generation did not produce 19 skills", errors)
+            actual_names = {entry.get("name") for entry in manifest.get("skills", [])}
+            expected_names = expected_skill_names(upstream)
+            require(actual_names == expected_names, f"Codex generation skill set mismatch: expected {sorted(expected_names)}, got {sorted(actual_names)}", errors)
             require((codex_tmp / "scripts" / "zskills-config.sh").exists(), "Codex generation missing zskills-config.sh", errors)
             require((codex_tmp / "scripts" / "zskills-preflight.sh").exists(), "Codex generation missing zskills-preflight.sh", errors)
             require((codex_tmp / "scripts" / "zskills-scheduler.sh").exists(), "Codex generation missing zskills-scheduler.sh", errors)

@@ -22,7 +22,8 @@ skill dump. Tracked development setup such as `.devcontainer/` is source for
 reproducing the environment. The repo also checks in `.claude/skills` so a fresh
 clone is immediately a Claude workspace with the converted ZSkills available.
 Per-user client state such as `.claude/settings.local.json` and
-`.claude/zskills-config.json` stays ignored and should be recreated locally.
+`.claude/zskills-config.json` / `.codex/zskills-config.json` stays ignored and
+should be recreated locally.
 
 The goal is not to fork the skill bodies by hand. The source of truth is:
 
@@ -41,6 +42,8 @@ regenerated as needed.
   compatible generated installs.
 - Codex-compatible generated skills with a shared adapter block.
 - Claude generated skills without Codex adapter text.
+- Block-diagram add-on skills from upstream (`add-block`, `add-example`, and
+  `model-design`) included in both generated clients.
 - Shared helpers for:
   - `.codex` / `.claude` config precedence
   - direct, cherry-pick, and PR landing mode validation
@@ -178,7 +181,7 @@ handoff jobs and logs for each turn.
 
 Verified:
 
-- all 19 generated skills have valid frontmatter
+- all 22 generated skills have valid frontmatter
 - generated Claude skills match upstream originals exactly
 - generated Codex skills differ only by adapter block or declared overlays
 - direct, cherry-pick, and PR landing modes are preserved in helpers and skill
@@ -196,5 +199,6 @@ Still worth canarying before relying on unattended production work:
 ## Notes
 
 - `playwright-cli` is included from upstream `.claude/skills/playwright-cli`.
+- Block-diagram add-ons are included from upstream `block-diagram/`.
 - Local `.claude/` state is ignored.
 - Generated `build/` output is ignored.
