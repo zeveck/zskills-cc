@@ -1,0 +1,70 @@
+--- SKILL.md
++++ SKILL.md
+@@ -170,6 +170,11 @@
+    Skip this step for content-only commits (`.md`, `.jpg`, `.png`, logs).
+
+ 3. **Dispatch a fresh agent to review the staged changes before committing.**
++   **Codex override:** use a Codex subagent if the active runtime exposes one.
++   If no subagent tool is available, perform the same read-only review inline
++   before committing and report that independence was degraded. Do not claim a
++   fresh external reviewer was used when it was not.
++
+    The agent receives `git diff --cached` and the proposed commit message.
+    It checks:
+    - Are all related files included? Any missing dependencies?
+@@ -196,6 +201,17 @@
+
+    If the agent approves: proceed to step 4.
+
++
++   **Codex preflight:** before `git commit`, prefer the shared procedural
++   preflight helper and treat failure as a blocker, not a warning. If
++   unavailable, perform the equivalent staged-diff and unrelated-change checks
++   inline and report degraded hook fidelity.
++   ```bash
++   ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++   [ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++   [ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation commit --client codex
++   ```
++
+ 4. Commit using a HEREDOC for clean formatting:
+    ```bash
+    git commit -m "$(cat <<'EOF'
+@@ -236,6 +252,18 @@
+
+ **This phase runs INSTEAD OF Phases 1–5 when `pr` is the first token.**
+ It pushes the current branch and creates a PR to main.
++
++
++**Codex preflight:** before rebase, push, or PR creation, run this check and treat failure as a blocker, not a warning:
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation pr --mode pr --client codex
++```
++
++If the helper is unavailable, complete the clean-tree and branch guards below
++and report degraded hook fidelity.
+
+ **Step 1 — Pre-check: clean working tree required:**
+ ```bash
+@@ -336,6 +364,18 @@
+ - Ensure all worktree changes are committed first (run Phases 1-5 if needed).
+
+ **Steps:**
++
++
++**Codex preflight:** before each cherry-pick, run this check and treat failure as a blocker, not a warning:
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation cherry-pick --mode cherry-pick --client codex
++```
++
++If the helper is unavailable, use the no-stash inventory and overlap checks
++below and report degraded hook fidelity.
+
+ 1. **Identify commits to land:**
+    ```bash

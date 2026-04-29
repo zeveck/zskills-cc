@@ -1,0 +1,37 @@
+--- SKILL.md
++++ SKILL.md
+@@ -68,6 +68,16 @@
+ ```
+
+ Present the output **verbatim** — it is already formatted with three buckets:
++
++**Codex scheduler status:** If `.zskills/schedules/` exists, include a short scheduler bucket after the normal briefing output:
++
++```bash
++ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] && "$ZSKILLS_SCHEDULER_HELPER" list
++```
++
++Summarize active, due, blocked, failed, and recently completed schedule jobs. Keep logs under `.zskills/logs/<job>/` as the feedback path for asynchronous runs.
+ - **NEEDS ATTENTION** — worktrees needing review, unchecked checkboxes, uncommitted files
+ - **LANDED SINCE LAST 24H** — recent commits grouped by conventional type
+ - **IN FLIGHT** — possibly-active worktrees, stash entries
+@@ -252,6 +262,17 @@
+
+ The `/briefing` skill supports recurring execution via cron.
+
++**Codex scheduler implementation:** In Codex, use the file-backed scheduler when available:
++
++```bash
++ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
++ZSKILLS_RUN_DUE_HELPER="$PROJECT_ROOT/scripts/zskills-run-due.sh"
++[ -x "$ZSKILLS_RUN_DUE_HELPER" ] || ZSKILLS_RUN_DUE_HELPER="$HOME/.codex/skills/scripts/zskills-run-due.sh"
++```
++
++If available, `every <SCHEDULE>` stores a `briefing` schedule using the base briefing mode args; `next` runs `zskills-scheduler.sh next --skill briefing`; and `stop` runs `zskills-scheduler.sh stop --skill briefing`. If unavailable, report unsupported without claiming background work. OS cron can drive due briefings with `cd "$PROJECT_ROOT" && scripts/zskills-run-due.sh`.
++
+ ### Setting a Schedule
+
+ If `$ARGUMENTS` contains `every <SCHEDULE>`:

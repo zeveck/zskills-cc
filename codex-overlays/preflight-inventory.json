@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "skill": "commit",
+      "operation": "commit",
+      "status": "gated",
+      "callsite": "Phase 5 git commit",
+      "guard": "zskills-preflight.sh --operation commit"
+    },
+    {
+      "skill": "commit",
+      "operation": "pr",
+      "status": "gated",
+      "callsite": "PR subcommand gh pr create",
+      "guard": "zskills-preflight.sh --operation pr"
+    },
+    {
+      "skill": "commit",
+      "operation": "cherry-pick",
+      "status": "gated",
+      "callsite": "land subcommand git cherry-pick",
+      "guard": "zskills-preflight.sh --operation cherry-pick"
+    },
+    {
+      "skill": "do",
+      "operation": "pr",
+      "status": "gated",
+      "callsite": "PR mode gh pr create",
+      "guard": "zskills-preflight.sh --operation pr"
+    },
+    {
+      "skill": "do",
+      "operation": "delete-worktree",
+      "status": "gated",
+      "callsite": "PR mode worktree cleanup guidance",
+      "guard": "zskills-preflight.sh --operation delete-worktree"
+    },
+    {
+      "skill": "do",
+      "operation": "cherry-pick",
+      "status": "exempt",
+      "callsite": "manual fallback text only",
+      "reason": "The skill prints a manual command for the user; it does not execute the cherry-pick."
+    },
+    {
+      "skill": "fix-issues",
+      "operation": "commit",
+      "status": "gated",
+      "callsite": "session log commit",
+      "guard": "zskills-preflight.sh --operation commit"
+    },
+    {
+      "skill": "fix-issues",
+      "operation": "cherry-pick",
+      "status": "gated",
+      "callsite": "Phase 6 cherry-pick landing",
+      "guard": "zskills-preflight.sh --operation cherry-pick"
+    },
+    {
+      "skill": "fix-issues",
+      "operation": "pr",
+      "status": "gated",
+      "callsite": "per-issue PR creation",
+      "guard": "zskills-preflight.sh --operation pr"
+    },
+    {
+      "skill": "fix-issues",
+      "operation": "delete-worktree",
+      "status": "gated",
+      "callsite": "worktree cleanup",
+      "guard": "zskills-preflight.sh --operation delete-worktree"
+    },
+    {
+      "skill": "fix-issues",
+      "operation": "clear-tracking",
+      "status": "gated",
+      "callsite": "tracking cleanup guidance",
+      "guard": "zskills-preflight.sh --operation clear-tracking"
+    },
+    {
+      "skill": "fix-report",
+      "operation": "cherry-pick",
+      "status": "gated",
+      "callsite": "Step 4 approved fix landing",
+      "guard": "zskills-preflight.sh --operation cherry-pick"
+    },
+    {
+      "skill": "fix-report",
+      "operation": "delete-worktree",
+      "status": "gated",
+      "callsite": "Step 6 safe worktree removal",
+      "guard": "zskills-preflight.sh --operation delete-worktree"
+    },
+    {
+      "skill": "research-and-go",
+      "operation": "clear-tracking",
+      "status": "gated",
+      "callsite": "Pipeline Cleanup interactive clear-tracking command",
+      "guard": "zskills-preflight.sh --operation clear-tracking"
+    },
+    {
+      "skill": "run-plan",
+      "operation": "commit",
+      "status": "gated",
+      "callsite": "phase status commits",
+      "guard": "zskills-preflight.sh --operation commit"
+    },
+    {
+      "skill": "run-plan",
+      "operation": "cherry-pick",
+      "status": "gated",
+      "callsite": "Phase 6 cherry-pick landing",
+      "guard": "zskills-preflight.sh --operation cherry-pick"
+    },
+    {
+      "skill": "run-plan",
+      "operation": "pr",
+      "status": "gated",
+      "callsite": "PR mode creation",
+      "guard": "zskills-preflight.sh --operation pr"
+    },
+    {
+      "skill": "run-plan",
+      "operation": "merge",
+      "status": "gated",
+      "callsite": "PR auto-merge",
+      "guard": "zskills-preflight.sh --operation merge"
+    },
+    {
+      "skill": "run-plan",
+      "operation": "clear-tracking",
+      "status": "gated",
+      "callsite": "tracking cleanup guidance",
+      "guard": "zskills-preflight.sh --operation clear-tracking"
+    },
+    {
+      "skill": "update-zskills",
+      "operation": "clear-tracking",
+      "status": "exempt",
+      "callsite": "helper installation list",
+      "reason": "The skill copies or mentions clear-tracking.sh as infrastructure; it does not execute tracking cleanup."
+    },
+    {
+      "skill": "run-plan",
+      "operation": "delete-worktree",
+      "status": "exempt",
+      "callsite": "diagnostic prose about leaked worktrees",
+      "reason": "This is explanatory prose about hook behavior; the skill does not execute git worktree remove at this call site."
+    },
+    {
+      "skill": "briefing",
+      "operation": "delete-worktree",
+      "status": "exempt",
+      "callsite": "worktree-status output description",
+      "reason": "Briefing is read-only and describes copy-paste cleanup commands; it does not execute git worktree remove."
+    }
+  ]
+}

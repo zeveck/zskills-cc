@@ -1,0 +1,143 @@
+--- SKILL.md
++++ SKILL.md
+@@ -8,6 +8,22 @@
+ Install or update the supporting infrastructure that Z Skills depend
+ on: CLAUDE.md agent rules, safety hooks, helper scripts, and skill
+ dependencies.
++
++**Codex cross-client install contract:** In Codex, prefer the shared installer helper for actual installation work:
++
++```bash
++ZSKILLS_INSTALL_HELPER="$PROJECT_ROOT/scripts/zskills-install.sh"
++[ -x "$ZSKILLS_INSTALL_HELPER" ] || ZSKILLS_INSTALL_HELPER="$HOME/.codex/skills/scripts/zskills-install.sh"
++```
++
++Supported client flags:
++
++- `--client codex` — generate Codex skills from upstream plus declared Codex overlays into `~/.codex/skills`, write or preserve `.codex/zskills-config.json`, and leave `.claude/skills` untouched.
++- `--client claude` — install upstream-clean skills into `.claude/skills`, write or preserve `.claude/zskills-config.json`, and do not inject `ZSKILLS_CODEX_COMPAT`.
++- `--client both` — intentionally mirror shared config between `.codex` and `.claude`, then install both clients. If configs diverge, stop unless the user explicitly confirms mirroring by using `--mirror-config`.
++- `--client auto` or no client flag — detect conservatively: existing dual-client markers mean `both`, Codex markers mean `codex`, Claude markers mean `claude`, otherwise default to `codex` in a Codex runtime.
++
++If the helper is unavailable, follow the client boundaries above manually and report degraded installer fidelity. Claude-native installs keep the original project-local hook behavior; Codex installs use generated global skills and procedural fallbacks.
+
+ **Invocation:**
+
+@@ -59,6 +75,8 @@
+ If core is already installed, adding an add-on flag just copies the
+ add-on skills (the audit detects core is satisfied and skips it).
+
++Client flags are orthogonal to presets and add-ons. Parse `--client codex`, `--client claude`, `--client both`, `--client auto`, and `--mirror-config` before install/update work. Unknown client values are errors because they can otherwise pollute the wrong client install.
++
+ ---
+
+ ## Step 0 — Locate Portable Assets
+@@ -68,14 +86,18 @@
+ vendored directory (inside projects like yours), or the Z Skills repo
+ root (which has the same structure). To find them:
+
+-1. Check if `zskills-portable/` exists in the current working directory. If
++1. In Codex, first check if `~/.codex/zskills-portable/` exists and contains
++   `CLAUDE_TEMPLATE.md`. If yes, use it as `$PORTABLE` and `$ZSKILLS_PATH`.
++   This is the stable Codex portable source.
++2. Check if `zskills-portable/` exists in the current working directory. If
+    yes, use it as `$PORTABLE`.
+-2. Check if `zskills/` exists in the current directory and contains
++3. Check if `zskills/` exists in the current directory and contains
+    `CLAUDE_TEMPLATE.md`. If yes, it's a repo clone — use `zskills/` as
+    both `$PORTABLE` and `$ZSKILLS_PATH`.
+-3. Check if `/tmp/zskills` exists and contains `CLAUDE_TEMPLATE.md`. If
++4. Check if `/tmp/zskills` exists and contains `CLAUDE_TEMPLATE.md`. If
+    yes, use it.
+-4. **Auto-clone fallback:** Clone the repo:
++5. **Auto-clone fallback:** In Codex, clone to `~/.codex/zskills-portable`
++   when possible. Otherwise clone the repo:
+    ```bash
+    git clone https://github.com/zeveck/zskills.git /tmp/zskills
+    ```
+@@ -99,6 +121,18 @@
+ Store the resolved path as `$PORTABLE` for use in install/update modes.
+ If the source is a git repo, also store it as `$ZSKILLS_PATH` for use
+ in update mode.
++
++**Codex install boundary:** Codex skills are global user-level assets under
++`~/.codex/skills/<name>/SKILL.md`. Claude skills are project-local assets
++under `.claude/skills/<name>/SKILL.md`. Do not overwrite project-local Claude
++skills when updating the global Codex install unless the user explicitly asked
++for dual-client project setup. For a Codex project setup, copy portable
++scripts/config into the project and write `.codex/zskills-config.json`;
++for a Claude project setup, keep the existing `.claude` hooks/settings/config
++behavior. When dual-client setup is requested, write both configs from the
++same detected values and report that they were intentionally mirrored. The
++generated `ZSKILLS_CODEX_COMPAT` block belongs only in Codex-installed copies;
++do not inject it into `.claude/skills`.
+
+ ---
+
+@@ -149,21 +183,30 @@
+ | `direct` | `"direct"` | `false` | `0` |
+
+ The three affected fields are **preset-owned**. When `$PRESET_ARG` is
+-non-empty, every other field in `.claude/zskills-config.json`
+-(`branch_prefix`, `testing.*`, `dev_server.*`, `ui.*`, `ci.*`,
+-`timezone`, `agents.min_model`) is preserved unchanged.
++non-empty, every other field in the active client config
++(`.codex/zskills-config.json` for Codex setup, `.claude/zskills-config.json`
++for Claude setup, or both during explicit dual-client setup) is preserved
++unchanged.
+
+ ---
+
+ ## Step 0.5 — Read Config
+
+-Check if `.claude/zskills-config.json` exists in the target project root (`$PROJECT_ROOT`).
++Resolve the active config path in the target project root (`$PROJECT_ROOT`):
++
++```bash
++CODEX_CONFIG="$PROJECT_ROOT/.codex/zskills-config.json"
++CLAUDE_CONFIG="$PROJECT_ROOT/.claude/zskills-config.json"
++CONFIG_FILE=""
++[ -f "$CODEX_CONFIG" ] && CONFIG_FILE="$CODEX_CONFIG"
++[ -z "$CONFIG_FILE" ] && [ -f "$CLAUDE_CONFIG" ] && CONFIG_FILE="$CLAUDE_CONFIG"
++```
+
+ **If it exists:**
+ 1. Read the file content.
+ 2. Extract values using bash regex (no jq dependency):
+    ```bash
+-   CONFIG_CONTENT=$(cat "$PROJECT_ROOT/.claude/zskills-config.json")
++   CONFIG_CONTENT=$(cat "$CONFIG_FILE")
+    # Extract a string value (note: ([^\"]*) allows empty strings):
+    if [[ "$CONFIG_CONTENT" =~ \"project_name\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+      PROJECT_NAME="${BASH_REMATCH[1]}"
+@@ -216,9 +259,11 @@
+    fi
+    ```
+ 3. For each template placeholder, use the config value if non-empty.
+-4. Copy `config/zskills-config.schema.json` from `$PORTABLE` to
+-   `.claude/zskills-config.schema.json` in the target project (so the
+-   `$schema` reference in the config resolves correctly).
++4. Copy `config/zskills-config.schema.json` from `$PORTABLE` next to the
++   active config file (`.codex/zskills-config.schema.json` for Codex,
++   `.claude/zskills-config.schema.json` for Claude) so the `$schema`
++   reference resolves correctly. In explicit dual-client setup, copy it to
++   both directories.
+ 5. **If `$PRESET_ARG` was set**, defer preset application to
+    **Step F — Apply Preset** (invoked at the end of both install and
+    update paths). Step F runs `scripts/apply-preset.sh` which handles
+@@ -238,7 +283,7 @@
+    heredoc step. If the user's permission mode prompts for the write, that is
+    Claude Code's normal flow and the user will approve.
+
+-   Content to write to `.claude/zskills-config.json`:
++   Content to write to the active config path:
+    ```json
+    {
+      "$schema": "./zskills-config.schema.json",
+@@ -452,6 +497,7 @@
+ - `sanitize-pipeline-id.sh` — shared PIPELINE_ID sanitizer (used by writers before persisting ID)
+ - `apply-preset.sh` — required by the preset UX (Step F); splices/flips the `BLOCK_MAIN_PUSH` line in `block-unsafe-generic.sh` and updates `execution.landing`/`execution.main_protected` in config
+ - `statusline.sh` — session statusline helper (optional but should be installed if the user has it)
++- `zskills-install.sh` — cross-client install helper for Codex/Claude/both installs
+
+ ### Step 5 — Check skills with additional requirements

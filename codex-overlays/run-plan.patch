@@ -1,0 +1,202 @@
+--- SKILL.md
++++ SKILL.md
+@@ -75,13 +75,43 @@
+ - `every` followed by a schedule expression — scheduling mode
+ - `pr` (case-insensitive) — PR landing mode
+ - `direct` (case-insensitive) — direct landing mode
+-- Neither `pr` nor `direct` — read config default (`execution.landing`),
++- `cherry-pick` (case-insensitive) — cherry-pick landing mode
++- Neither `pr`, `direct`, nor `cherry-pick` — read config default (`execution.landing`),
+   or `cherry-pick` if no config
+
+ **Landing mode resolution:**
+-1. Explicit argument wins: `pr` or `direct` in $ARGUMENTS
+-2. Config default: read `.claude/zskills-config.json` `execution.landing` field
++1. Explicit argument wins: `pr`, `direct`, or `cherry-pick` in $ARGUMENTS
++2. Config default: read `.codex/zskills-config.json` first, then
++   `.claude/zskills-config.json`, and stop before landing if both exist and
++   disagree on `execution.landing` or `execution.main_protected`
+ 3. Fallback: `cherry-pick`
++
++
++**Codex helper implementation:** In Codex, prefer the shared helper for the
++actual resolution and validation, because it uses JSON parsing and one shared
++`.codex` / `.claude` precedence rule instead of repeated prompt snippets:
++
++```bash
++ZSKILLS_CONFIG_HELPER="$PROJECT_ROOT/scripts/zskills-config.sh"
++[ -x "$ZSKILLS_CONFIG_HELPER" ] || ZSKILLS_CONFIG_HELPER="$HOME/.codex/skills/scripts/zskills-config.sh"
++if [ -x "$ZSKILLS_CONFIG_HELPER" ]; then
++  if [[ "$ARGUMENTS" =~ (^|[[:space:]])[pP][rR]($|[[:space:]]) ]]; then
++    LANDING_MODE="pr"
++  elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[dD][iI][rR][eE][cC][tT]($|[[:space:]]) ]]; then
++    LANDING_MODE="direct"
++  elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[cC][hH][eE][rR][rR][yY]-[pP][iI][cC][kK]($|[[:space:]]) ]]; then
++    LANDING_MODE="cherry-pick"
++  else
++    LANDING_MODE=$("$ZSKILLS_CONFIG_HELPER" get execution.landing --client codex)
++  fi
++  "$ZSKILLS_CONFIG_HELPER" validate --client codex --mode "$LANDING_MODE"
++else
++  echo "WARN: zskills-config.sh unavailable; using compatibility snippet below" >&2
++fi
++```
++
++If the helper is unavailable, use the compatibility snippet below and report
++that config fidelity is degraded to inline parsing.
+
+ ```bash
+ # Detect landing mode
+@@ -90,10 +120,32 @@
+   LANDING_MODE="pr"
+ elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[dD][iI][rR][eE][cC][tT]($|[[:space:]]) ]]; then
+   LANDING_MODE="direct"
++elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[cC][hH][eE][rR][rR][yY]-[pP][iI][cC][kK]($|[[:space:]]) ]]; then
++  LANDING_MODE="cherry-pick"
+ else
+-  # Read config default
+-  CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
+-  if [ -f "$CONFIG_FILE" ]; then
++  # Read config default. Prefer Codex-native config, then Claude config.
++  CODEX_CONFIG="$PROJECT_ROOT/.codex/zskills-config.json"
++  CLAUDE_CONFIG="$PROJECT_ROOT/.claude/zskills-config.json"
++  CODEX_CONTENT=""; CLAUDE_CONTENT=""
++  [ -f "$CODEX_CONFIG" ] && CODEX_CONTENT=$(cat "$CODEX_CONFIG")
++  [ -f "$CLAUDE_CONFIG" ] && CLAUDE_CONTENT=$(cat "$CLAUDE_CONFIG")
++  if [ -n "$CODEX_CONTENT" ] && [ -n "$CLAUDE_CONTENT" ]; then
++    CODEX_LANDING=""; CLAUDE_LANDING=""
++    CODEX_PROTECTED=""; CLAUDE_PROTECTED=""
++    [[ "$CODEX_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && CODEX_LANDING="${BASH_REMATCH[1]}"
++    [[ "$CLAUDE_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && CLAUDE_LANDING="${BASH_REMATCH[1]}"
++    [[ "$CODEX_CONTENT" =~ \"main_protected\"[[:space:]]*:[[:space:]]*(true|false) ]] && CODEX_PROTECTED="${BASH_REMATCH[1]}"
++    [[ "$CLAUDE_CONTENT" =~ \"main_protected\"[[:space:]]*:[[:space:]]*(true|false) ]] && CLAUDE_PROTECTED="${BASH_REMATCH[1]}"
++    if { [ -n "$CODEX_LANDING" ] && [ -n "$CLAUDE_LANDING" ] && [ "$CODEX_LANDING" != "$CLAUDE_LANDING" ]; } ||
++       { [ -n "$CODEX_PROTECTED" ] && [ -n "$CLAUDE_PROTECTED" ] && [ "$CODEX_PROTECTED" != "$CLAUDE_PROTECTED" ]; }; then
++      echo "ERROR: .codex and .claude zskills config disagree on landing/main protection. Resolve before landing."
++      exit 1
++    fi
++  fi
++  CONFIG_FILE=""
++  [ -f "$CODEX_CONFIG" ] && CONFIG_FILE="$CODEX_CONFIG"
++  [ -z "$CONFIG_FILE" ] && [ -f "$CLAUDE_CONFIG" ] && CONFIG_FILE="$CLAUDE_CONFIG"
++  if [ -n "$CONFIG_FILE" ]; then
+     CONFIG_CONTENT=$(cat "$CONFIG_FILE")
+     if [[ "$CONFIG_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+       CFG_LANDING="${BASH_REMATCH[1]}"
+@@ -105,12 +157,54 @@
+ fi
+ ```
+
+-**Validation:**
++**Codex scheduler implementation:** In Codex, use the file-backed scheduler when available. Prefer the project helper, then the generated installed helper:
++
++```bash
++ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
++ZSKILLS_RUN_DUE_HELPER="$PROJECT_ROOT/scripts/zskills-run-due.sh"
++[ -x "$ZSKILLS_RUN_DUE_HELPER" ] || ZSKILLS_RUN_DUE_HELPER="$HOME/.codex/skills/scripts/zskills-run-due.sh"
++```
++
++If `$ZSKILLS_SCHEDULER_HELPER` is executable:
++
++- `every <SCHEDULE>` stores a schedule file with `zskills-scheduler.sh add --skill run-plan --args "<plan-file and flags without every/now>" --schedule "<SCHEDULE>" --client codex --runner-command "${ZSKILLS_RUNNER_COMMAND:-codex exec}"`. Do not include a fixed phase number unless the user explicitly asked for one.
++- `next` runs `zskills-scheduler.sh next --skill run-plan`.
++- `stop` runs `zskills-scheduler.sh stop --skill run-plan`.
++- standalone `now` runs `zskills-scheduler.sh trigger --skill run-plan` followed by `zskills-run-due.sh`.
++
++If the helper is unavailable, report unsupported and exit without claiming background execution. OS cron can drive due jobs with `cd "$PROJECT_ROOT" && scripts/zskills-run-due.sh`.
++
++**Validation:****Validation:**
++
++
++**Codex preflight gates:** Before any commit, cherry-pick, PR creation,
++PR merge/auto-merge, worktree deletion, or tracking cleanup in this skill,
++run the shared preflight helper and treat failure as a blocker:
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++if [ -x "$ZSKILLS_PREFLIGHT_HELPER" ]; then
++  "$ZSKILLS_PREFLIGHT_HELPER" --operation commit --mode "$LANDING_MODE" --client codex
++  "$ZSKILLS_PREFLIGHT_HELPER" --operation cherry-pick --mode "$LANDING_MODE" --client codex
++  "$ZSKILLS_PREFLIGHT_HELPER" --operation pr --mode "$LANDING_MODE" --client codex
++  "$ZSKILLS_PREFLIGHT_HELPER" --operation merge --mode "$LANDING_MODE" --client codex
++  "$ZSKILLS_PREFLIGHT_HELPER" --operation delete-worktree --mode "$LANDING_MODE" --client codex --worktree "$WORKTREE_PATH"
++  "$ZSKILLS_PREFLIGHT_HELPER" --operation clear-tracking --mode "$LANDING_MODE" --client codex
++fi
++```
++
++Run only the operation that matches the next dangerous action. If the helper is
++unavailable, perform the equivalent branch, cleanliness, protected-main, and
++tracking checks inline and say that native hook fidelity is degraded.
+
+ ```bash
+ # direct + main_protected -> error
+ if [[ "$LANDING_MODE" == "direct" ]]; then
+-  CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
++  CONFIG_FILE=""
++  [ -f "$PROJECT_ROOT/.codex/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.codex/zskills-config.json"
++  [ -z "$CONFIG_FILE" ] && [ -f "$PROJECT_ROOT/.claude/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
+   if [ -f "$CONFIG_FILE" ]; then
+     CONFIG_CONTENT=$(cat "$CONFIG_FILE")
+     if [[ "$CONFIG_CONTENT" =~ \"main_protected\"[[:space:]]*:[[:space:]]*true ]]; then
+@@ -123,11 +217,26 @@
+
+ **Reading branch_prefix from config:**
+
++
++**Codex helper implementation:** Prefer the shared helper for branch prefix:
++
++```bash
++ZSKILLS_CONFIG_HELPER="$PROJECT_ROOT/scripts/zskills-config.sh"
++[ -x "$ZSKILLS_CONFIG_HELPER" ] || ZSKILLS_CONFIG_HELPER="$HOME/.codex/skills/scripts/zskills-config.sh"
++BRANCH_PREFIX="feat/"
++if [ -x "$ZSKILLS_CONFIG_HELPER" ]; then
++  BRANCH_PREFIX=$("$ZSKILLS_CONFIG_HELPER" get execution.branch_prefix --client codex)
++fi
++```
++
+ ```bash
+ # Read branch prefix from config (default: feat/)
+ BRANCH_PREFIX="feat/"
+-if [ -f "$PROJECT_ROOT/.claude/zskills-config.json" ]; then
+-  CONFIG_CONTENT=$(cat "$PROJECT_ROOT/.claude/zskills-config.json")
++CONFIG_FILE=""
++[ -f "$PROJECT_ROOT/.codex/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.codex/zskills-config.json"
++[ -z "$CONFIG_FILE" ] && [ -f "$PROJECT_ROOT/.claude/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
++if [ -n "$CONFIG_FILE" ]; then
++  CONFIG_CONTENT=$(cat "$CONFIG_FILE")
+   # ([^\"]*) allows empty string match -- empty prefix means no prefix
+   if [[ "$CONFIG_CONTENT" =~ \"branch_prefix\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+     BRANCH_PREFIX="${BASH_REMATCH[1]}"
+@@ -135,8 +244,8 @@
+ fi
+ ```
+
+-**Strip `pr`/`direct` from arguments** before passing to downstream processing
+-(same pattern as stripping `auto`, `finish`, etc.).
++**Strip `pr`/`direct`/`cherry-pick` from arguments** before passing to
++downstream processing (same pattern as stripping `auto`, `finish`, etc.).
+
+ Examples:
+ - `/run-plan plans/FEATURE_PLAN.md` — interactive, next phase
+@@ -1397,6 +1506,8 @@
+ ## Phase 5c — Chunked finish auto transition (CRITICAL for finish auto mode)
+
+ **This section applies when running `/run-plan <plan> finish auto`.**
++
++**Codex scheduler implementation:** If `zskills-scheduler.sh` and `zskills-run-due.sh` are available, `finish auto` may schedule the next top-level turn by storing a one-shot due job (`zskills-scheduler.sh add --one-shot`) whose args omit a fixed phase number, then relying on `run-plan` to re-read the plan and choose the next incomplete phase. If no file-backed scheduler is available, do not execute the CronCreate steps in this section. Run the next phase sequentially in the current session or pause and report the next explicit command. Do not claim a one-shot cron was created. This Codex override takes precedence over the detailed Claude CronCreate steps below until scheduler emulation is enabled.
+
+ In chunked finish auto mode, each plan phase runs as a separate top-level
+ cron-fired turn. The current turn does NOT loop back to process the next
+@@ -2041,7 +2152,9 @@
+ CI_AUTO_FIX=true
+ CI_MAX_ATTEMPTS=2
+ FULL_TEST_CMD=""
+-CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
++CONFIG_FILE=""
++[ -f "$PROJECT_ROOT/.codex/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.codex/zskills-config.json"
++[ -z "$CONFIG_FILE" ] && [ -f "$PROJECT_ROOT/.claude/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
+ if [ -f "$CONFIG_FILE" ]; then
+   CI_CONFIG=$(cat "$CONFIG_FILE" 2>/dev/null)
+   if [[ "$CI_CONFIG" =~ \"auto_fix\"[[:space:]]*:[[:space:]]*(true|false) ]]; then

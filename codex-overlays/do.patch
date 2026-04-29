@@ -1,0 +1,73 @@
+--- SKILL.md
++++ SKILL.md
+@@ -172,6 +172,17 @@
+
+ ## Phase 0 — Schedule (if `every` is present)
+
++**Codex scheduler implementation:** In Codex, use the file-backed scheduler when available:
++
++```bash
++ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
++ZSKILLS_RUN_DUE_HELPER="$PROJECT_ROOT/scripts/zskills-run-due.sh"
++[ -x "$ZSKILLS_RUN_DUE_HELPER" ] || ZSKILLS_RUN_DUE_HELPER="$HOME/.codex/skills/scripts/zskills-run-due.sh"
++```
++
++If available, `every <SCHEDULE>` stores a `/do` schedule using the task description and flags with the schedule tokens removed; `next` runs `zskills-scheduler.sh next --skill do`; `stop` runs `zskills-scheduler.sh stop --skill do`; standalone `now` triggers `do` and runs due jobs. If unavailable, report unsupported without claiming background work.
++
+ If `$ARGUMENTS` contains `every <schedule>`:
+
+ 1. **Parse the schedule** — convert to a cron expression.
+@@ -305,8 +316,24 @@
+ ```
+
+ **Step A3 — Derive BRANCH_NAME and WORKTREE_PATH from (possibly suffixed) TASK_SLUG:**
+-```bash
+-BRANCH_PREFIX=$(jq -r '.execution.branch_prefix // "feat/"' .claude/zskills-config.json 2>/dev/null || echo "feat/")
++
++
++**Codex helper implementation:** Prefer the shared helper for branch prefix:
++
++```bash
++ZSKILLS_CONFIG_HELPER="$PROJECT_ROOT/scripts/zskills-config.sh"
++[ -x "$ZSKILLS_CONFIG_HELPER" ] || ZSKILLS_CONFIG_HELPER="$HOME/.codex/skills/scripts/zskills-config.sh"
++BRANCH_PREFIX="feat/"
++if [ -x "$ZSKILLS_CONFIG_HELPER" ]; then
++  BRANCH_PREFIX=$("$ZSKILLS_CONFIG_HELPER" get execution.branch_prefix --client codex)
++fi
++```
++```bash
++CONFIG_FILE=""
++[ -f .codex/zskills-config.json ] && CONFIG_FILE=".codex/zskills-config.json"
++[ -z "$CONFIG_FILE" ] && [ -f .claude/zskills-config.json ] && CONFIG_FILE=".claude/zskills-config.json"
++BRANCH_PREFIX="feat/"
++[ -n "$CONFIG_FILE" ] && BRANCH_PREFIX=$(jq -r '.execution.branch_prefix // "feat/"' "$CONFIG_FILE" 2>/dev/null || echo "feat/")
+ BRANCH_NAME="${BRANCH_PREFIX}do-${TASK_SLUG}"
+ WORKTREE_PATH="/tmp/${PROJECT_NAME}-do-${TASK_SLUG}"
+ ```
+@@ -369,6 +396,25 @@
+ Exit with error directing the user to inspect `$WORKTREE_PATH`.
+
+ **Step A7 — Rebase + push + PR creation (after implementation agent completes):**
++
++
++**Codex preflight gates:** In PR mode, run the shared preflight helper before
++creating or pushing the PR branch, and before any later worktree deletion.
++Treat failure as a blocker, not a warning:
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++if [ -x "$ZSKILLS_PREFLIGHT_HELPER" ]; then
++  (cd "$WORKTREE_PATH" && "$ZSKILLS_PREFLIGHT_HELPER" --operation pr --mode pr --client codex)
++  "$ZSKILLS_PREFLIGHT_HELPER" --operation delete-worktree --mode pr --client codex --worktree "$WORKTREE_PATH"
++fi
++```
++
++Run the `pr` operation from inside `$WORKTREE_PATH` so the branch guard sees
++the feature branch, not the main checkout. If the helper is unavailable, do the
++equivalent clean-branch and worktree checks inline and report the degraded hook
++fidelity.
+ ```bash
+ cd "$WORKTREE_PATH"
+ # Rebase onto latest main before push

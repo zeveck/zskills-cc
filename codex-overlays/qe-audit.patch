@@ -1,0 +1,55 @@
+--- SKILL.md
++++ SKILL.md
+@@ -73,43 +73,16 @@
+
+ ## Now (standalone — just `now` with no mode or schedule)
+
+-If `$ARGUMENTS` is just `now` (no `bash`, no `every`, no area):
+-
+-1. Use `CronList` to list all cron jobs
+-2. Find any whose prompt starts with `Run /qe-audit`
+-3. If found: extract the cron's prompt to get mode, area, and schedule.
+-   **Run immediately** — do NOT ask for confirmation. The cron stays active.
+-4. If none found: report `No active /qe-audit cron to trigger. Use
+-   /qe-audit to run a commit audit manually.` and **exit.**
+-
+-## Next (if `next` is present)
+-
+-If `$ARGUMENTS` contains `next` (case-insensitive):
+-
+-1. Use `CronList` to list all cron jobs
+-2. Find any whose prompt starts with `Run /qe-audit`
+-3. Report:
+-   - If found: parse the cron expression and compute the next fire time.
+-     Use `date +%Z` for the timezone. Show both relative and absolute:
+-     > Next QE audit in ~14h 47m (~9:03 AM ET tomorrow, cron XXXX).
+-     > Mode: commit audit
+-     > Prompt: Run /qe-audit every day at 9am now
+-   - If none found: `No active /qe-audit cron in this session.`
+-4. **Exit.** Do not run anything.
+-
+-## Stop (if `stop` is present)
+-
+-If `$ARGUMENTS` contains `stop` (case-insensitive):
+-
+-1. Use `CronList` to list all cron jobs
+-2. Delete ALL whose prompt starts with `Run /qe-audit` using `CronDelete`
+-3. Report what was cancelled:
+-   - If one found: `QE audit cron stopped (was job ID XXXX).`
+-   - If multiple found: `Stopped N QE audit crons (IDs: XXXX, YYYY).`
+-   - If none found: `No active /qe-audit cron found.`
+-4. **Exit.** Do not run anything.
+-
+-## Phase 0 — Schedule (if `every` is present)
++**Codex scheduler implementation:** In Codex, use the file-backed scheduler when available:
++
++```bash
++ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
++ZSKILLS_RUN_DUE_HELPER="$PROJECT_ROOT/scripts/zskills-run-due.sh"
++[ -x "$ZSKILLS_RUN_DUE_HELPER" ] || ZSKILLS_RUN_DUE_HELPER="$HOME/.codex/skills/scripts/zskills-run-due.sh"
++```
++
++If available, `every <SCHEDULE>` stores a `qe-audit` schedule using the mode/area args with schedule tokens removed; `next` runs `zskills-scheduler.sh next --skill qe-audit`; `stop` runs `zskills-scheduler.sh stop --skill qe-audit`; standalone `now` triggers `qe-audit` and runs due jobs. If unavailable, report unsupported without claiming background work.
+
+ If `$ARGUMENTS` contains `every <schedule>`:

@@ -1,0 +1,11 @@
+build/
+
+.zskills/
+reports/PLAN_REPORT.md
+.claude/
+.playwright/output/
+
+__pycache__/
+*.py[cod]
+
+.DS_Store

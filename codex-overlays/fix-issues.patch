@@ -1,0 +1,140 @@
+--- SKILL.md
++++ SKILL.md
+@@ -81,9 +81,38 @@
+ - `direct` (case-insensitive) — direct landing mode (commit on main)
+
+ **Landing mode resolution** (same pattern as `/run-plan`):
+-1. Explicit argument wins: `pr` or `direct` in `$ARGUMENTS`
+-2. Config default: read `.claude/zskills-config.json` `execution.landing` field
++1. Explicit argument wins: `pr`, `direct`, or `cherry-pick` in `$ARGUMENTS`
++2. Config default: read `.codex/zskills-config.json` first, then
++   `.claude/zskills-config.json`; stop before landing if both exist and
++   disagree on `execution.landing` or `execution.main_protected`
+ 3. Fallback: `cherry-pick`
++
++
++**Codex helper implementation:** In Codex, prefer the shared helper for the
++actual resolution and validation, because it uses JSON parsing and one shared
++`.codex` / `.claude` precedence rule instead of repeated prompt snippets:
++
++```bash
++ZSKILLS_CONFIG_HELPER="$PROJECT_ROOT/scripts/zskills-config.sh"
++[ -x "$ZSKILLS_CONFIG_HELPER" ] || ZSKILLS_CONFIG_HELPER="$HOME/.codex/skills/scripts/zskills-config.sh"
++if [ -x "$ZSKILLS_CONFIG_HELPER" ]; then
++  if [[ "$ARGUMENTS" =~ (^|[[:space:]])[pP][rR]($|[[:space:]]) ]]; then
++    LANDING_MODE="pr"
++  elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[dD][iI][rR][eE][cC][tT]($|[[:space:]]) ]]; then
++    LANDING_MODE="direct"
++  elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[cC][hH][eE][rR][rR][yY]-[pP][iI][cC][kK]($|[[:space:]]) ]]; then
++    LANDING_MODE="cherry-pick"
++  else
++    LANDING_MODE=$("$ZSKILLS_CONFIG_HELPER" get execution.landing --client codex)
++  fi
++  "$ZSKILLS_CONFIG_HELPER" validate --client codex --mode "$LANDING_MODE"
++else
++  echo "WARN: zskills-config.sh unavailable; using compatibility snippet below" >&2
++fi
++```
++
++If the helper is unavailable, use the compatibility snippet below and report
++that config fidelity is degraded to inline parsing.
+
+ ```bash
+ # Detect landing mode (same logic as /run-plan)
+@@ -92,9 +121,31 @@
+   LANDING_MODE="pr"
+ elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[dD][iI][rR][eE][cC][tT]($|[[:space:]]) ]]; then
+   LANDING_MODE="direct"
++elif [[ "$ARGUMENTS" =~ (^|[[:space:]])[cC][hH][eE][rR][rR][yY]-[pP][iI][cC][kK]($|[[:space:]]) ]]; then
++  LANDING_MODE="cherry-pick"
+ else
+-  CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
+-  if [ -f "$CONFIG_FILE" ]; then
++  CODEX_CONFIG="$PROJECT_ROOT/.codex/zskills-config.json"
++  CLAUDE_CONFIG="$PROJECT_ROOT/.claude/zskills-config.json"
++  CODEX_CONTENT=""; CLAUDE_CONTENT=""
++  [ -f "$CODEX_CONFIG" ] && CODEX_CONTENT=$(cat "$CODEX_CONFIG")
++  [ -f "$CLAUDE_CONFIG" ] && CLAUDE_CONTENT=$(cat "$CLAUDE_CONFIG")
++  if [ -n "$CODEX_CONTENT" ] && [ -n "$CLAUDE_CONTENT" ]; then
++    CODEX_LANDING=""; CLAUDE_LANDING=""
++    CODEX_PROTECTED=""; CLAUDE_PROTECTED=""
++    [[ "$CODEX_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && CODEX_LANDING="${BASH_REMATCH[1]}"
++    [[ "$CLAUDE_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && CLAUDE_LANDING="${BASH_REMATCH[1]}"
++    [[ "$CODEX_CONTENT" =~ \"main_protected\"[[:space:]]*:[[:space:]]*(true|false) ]] && CODEX_PROTECTED="${BASH_REMATCH[1]}"
++    [[ "$CLAUDE_CONTENT" =~ \"main_protected\"[[:space:]]*:[[:space:]]*(true|false) ]] && CLAUDE_PROTECTED="${BASH_REMATCH[1]}"
++    if { [ -n "$CODEX_LANDING" ] && [ -n "$CLAUDE_LANDING" ] && [ "$CODEX_LANDING" != "$CLAUDE_LANDING" ]; } ||
++       { [ -n "$CODEX_PROTECTED" ] && [ -n "$CLAUDE_PROTECTED" ] && [ "$CODEX_PROTECTED" != "$CLAUDE_PROTECTED" ]; }; then
++      echo "ERROR: .codex and .claude zskills config disagree on landing/main protection. Resolve before landing."
++      exit 1
++    fi
++  fi
++  CONFIG_FILE=""
++  [ -f "$CODEX_CONFIG" ] && CONFIG_FILE="$CODEX_CONFIG"
++  [ -z "$CONFIG_FILE" ] && [ -f "$CLAUDE_CONFIG" ] && CONFIG_FILE="$CLAUDE_CONFIG"
++  if [ -n "$CONFIG_FILE" ]; then
+     CONFIG_CONTENT=$(cat "$CONFIG_FILE")
+     if [[ "$CONFIG_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+       CFG_LANDING="${BASH_REMATCH[1]}"
+@@ -105,7 +156,9 @@
+
+ # Validation: direct + main_protected -> error
+ if [[ "$LANDING_MODE" == "direct" ]]; then
+-  CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
++  CONFIG_FILE=""
++  [ -f "$PROJECT_ROOT/.codex/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.codex/zskills-config.json"
++  [ -z "$CONFIG_FILE" ] && [ -f "$PROJECT_ROOT/.claude/zskills-config.json" ] && CONFIG_FILE="$PROJECT_ROOT/.claude/zskills-config.json"
+   if [ -f "$CONFIG_FILE" ]; then
+     CONFIG_CONTENT=$(cat "$CONFIG_FILE")
+     if [[ "$CONFIG_CONTENT" =~ \"main_protected\"[[:space:]]*:[[:space:]]*true ]]; then
+@@ -116,7 +169,33 @@
+ fi
+ ```
+
+-**Strip `pr`/`direct` from arguments** before parsing issue numbers, focus,
++**Strip `pr`/`direct` from arguments**
++
++**Codex preflight gates:** Before any commit, cherry-pick, PR creation,
++PR merge/auto-merge, worktree deletion, or tracking cleanup in this skill,
++run the shared preflight helper and treat failure as a blocker:
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++```
++
++Run only the operation that matches the next dangerous action:
++
++```bash
++"$ZSKILLS_PREFLIGHT_HELPER" --operation commit --mode "$LANDING_MODE" --client codex
++"$ZSKILLS_PREFLIGHT_HELPER" --operation cherry-pick --mode "$LANDING_MODE" --client codex
++"$ZSKILLS_PREFLIGHT_HELPER" --operation pr --mode "$LANDING_MODE" --client codex
++"$ZSKILLS_PREFLIGHT_HELPER" --operation merge --mode "$LANDING_MODE" --client codex
++"$ZSKILLS_PREFLIGHT_HELPER" --operation delete-worktree --mode "$LANDING_MODE" --client codex --worktree "$WORKTREE_PATH"
++"$ZSKILLS_PREFLIGHT_HELPER" --operation clear-tracking --mode "$LANDING_MODE" --client codex
++```
++
++If the helper is unavailable, perform the equivalent branch, cleanliness,
++protected-main, and tracking checks inline and say that native hook fidelity is
++degraded.
++
++ before parsing issue numbers, focus,
+ or other tokens (same pattern as stripping `auto`, `now`, etc.). The
+ downstream N/focus parser must not see `pr` or `direct` as an issue count
+ or domain name.
+@@ -352,6 +431,17 @@
+ 6. **Exit.** Plans are ready for `/run-plan` execution.
+
+ ## Phase 0 — Schedule (if `every` is present)
++
++**Codex scheduler implementation:** In Codex, use the file-backed scheduler when available:
++
++```bash
++ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
++ZSKILLS_RUN_DUE_HELPER="$PROJECT_ROOT/scripts/zskills-run-due.sh"
++[ -x "$ZSKILLS_RUN_DUE_HELPER" ] || ZSKILLS_RUN_DUE_HELPER="$HOME/.codex/skills/scripts/zskills-run-due.sh"
++```
++
++If available, `every <SCHEDULE>` stores a `fix-issues` schedule using the remaining issue count/focus/flags as args; `next` runs `zskills-scheduler.sh next --skill fix-issues`; `stop` runs `zskills-scheduler.sh stop --skill fix-issues`; standalone `now` triggers `fix-issues` and runs due jobs. If unavailable, report unsupported without claiming background work.
+
+ If `$ARGUMENTS` contains `every <schedule>`:

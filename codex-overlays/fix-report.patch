@@ -1,0 +1,34 @@
+--- SKILL.md
++++ SKILL.md
+@@ -226,6 +226,15 @@
+
+ For cherry-pick mode fixes that haven't been landed yet, continue with
+ the steps below.
++
++
++**Codex preflight:** before any approved cherry-pick, run the shared procedural preflight helper and treat failure as a blocker, not a warning. Do not stash around this check; preserve the evidence and ask the user if it fails.
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation cherry-pick --mode cherry-pick --client codex
++```
+
+ For each approved fix that has NOT been landed:
+
+@@ -347,6 +356,15 @@
+ **Never remove** worktrees with `status: pr-ci-failing`, `status: pr-failed`,
+ `status: conflict`, `status: partial`, or ACTIVE worktrees (no `.landed`).
+
++
++**Codex preflight:** before removing any worktree, run the shared procedural preflight helper for the exact path and treat failure as a blocker:
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation delete-worktree --client codex --worktree "<path>"
++```
++
+ After removing SAFE worktrees:
+ ```bash
+ # For status: full or status: landed:

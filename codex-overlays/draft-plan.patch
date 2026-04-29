@@ -1,0 +1,15 @@
+--- SKILL.md
++++ SKILL.md
+@@ -86,6 +86,12 @@
+ ```
+
+ ### Research agents
++
++**Codex override:** dispatch the agents below with Codex subagents only when a
++subagent tool is available. If no subagent tool is available, run each research
++focus inline as separate labeled passes, persist the same research summary
++files, and report that the plan used inline research rather than parallel
++fresh-agent research.
+
+ Dispatch multiple Explore agents in parallel to investigate the problem space.
+ Each agent gets the full description and a specific research focus:

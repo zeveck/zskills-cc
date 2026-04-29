@@ -1,0 +1,18 @@
+--- SKILL.md
++++ SKILL.md
+@@ -277,6 +277,15 @@
+ auto-wipe -- `requires.verify-changes.final.*` and its fulfillment marker
+ are pipeline-completion records that should survive until the user confirms
+ the pipeline finished.
++
++**Codex preflight:** before running `bash scripts/clear-tracking.sh`, run the shared procedural preflight helper and treat failure as a blocker:
++
++```bash
++ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
++[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation clear-tracking --client codex
++```
++
+
+ If the pipeline failed at any point, tracking is preserved for inspection
+ and re-run. See Step 0 Re-run Handling for the resume protocol.

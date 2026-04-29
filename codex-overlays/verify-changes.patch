@@ -1,0 +1,15 @@
+--- SKILL.md
++++ SKILL.md
+@@ -27,6 +27,12 @@
+ "know" what the code does.
+
+ ### Dispatch protocol
++
++**Codex override:** interpret `Agent`/`Task` below as a Codex subagent tool
++only when the active runtime exposes one. If no subagent tool is available,
++run the verification inline, write the report as `inline self-review`, and
++explicitly state that the fresh-agent guarantee was unavailable. Do not invent
++or imply an independent verifier when the tool is absent.
+
+ **Check your tool list first.** Whether you can dispatch fresh sub-agents
+ for verification depends on whether you have the `Agent` (or `Task`) tool:

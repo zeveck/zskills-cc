@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "upstream": "/home/vscode/.codex/zskills-portable",
+  "overlays": [
+    {
+      "skill": "briefing",
+      "path": "briefing.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "1feb8514b39d3b7d4a6a82470381e0906e50fd85723d3d93ef7dfdab7da48cb8",
+      "rationale": "Codex-only overlay adopts file-backed scheduler semantics while preserving native Claude cron instructions."
+    },
+    {
+      "skill": "commit",
+      "path": "commit.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "14bab5d9022c836265e502a83f7da360f9cae659f3b877197c098b87cbfa91ae",
+      "rationale": "Codex-only overlay adds explicit procedural preflight gates for dangerous operations while preserving upstream Claude behavior."
+    },
+    {
+      "skill": "do",
+      "path": "do.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "7b292565edfaf874403083856562280946054f3fb010603f21c426a71ee36aa8",
+      "rationale": "Codex-only overlay adds explicit procedural preflight gates for dangerous operations while preserving upstream Claude behavior."
+    },
+    {
+      "skill": "draft-plan",
+      "path": "draft-plan.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "4cdbc0d54c29e1ebacb8fd28b0bc18475d01b1ab176cc044c1bbd46f34cbe14c",
+      "rationale": "Current reviewed Codex overlay needed to preserve adapter-specific behavior while keeping upstream canonical."
+    },
+    {
+      "skill": "fix-issues",
+      "path": "fix-issues.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "704871f1611a00be847dcd417690a4ffdf2cd9ee923f0eb3b22d82f818c2658f",
+      "rationale": "Codex-only overlay adopts file-backed scheduler semantics while preserving native Claude cron instructions."
+    },
+    {
+      "skill": "fix-report",
+      "path": "fix-report.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "9680d8e96340073fe25f29364b617897aa4ca713d75d36a0a2c6cc6ec03ca47d",
+      "rationale": "Codex-only overlay adds procedural preflight gates for dangerous operations while preserving upstream Claude hook behavior."
+    },
+    {
+      "skill": "qe-audit",
+      "path": "qe-audit.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "d8c44468ef5d2b8f6fe994dede34c7c3ebdcdfdd866dd9d181b0fe11a7cdd44e",
+      "rationale": "Codex-only overlay adopts file-backed scheduler semantics while preserving native Claude cron instructions."
+    },
+    {
+      "skill": "research-and-go",
+      "path": "research-and-go.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "50721acf6b2e9a2c0be4e1f89cf56aa4b78c2998ef9a6faa08214a8fdc7b9208",
+      "rationale": "Codex-only overlay adds procedural preflight gates for dangerous operations while preserving upstream Claude hook behavior."
+    },
+    {
+      "skill": "run-plan",
+      "path": "run-plan.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "3ce1313fe8daa855fe45416d741725d7add999eca4993cd0fe74cb85b11c173b",
+      "rationale": "Codex-only overlay adopts file-backed scheduler semantics while preserving native Claude cron instructions."
+    },
+    {
+      "skill": "update-zskills",
+      "path": "update-zskills.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "d6df47f8f19eef60dc88eacffa0c96ff207a5cd1a0260b2093efccb8a1261009",
+      "rationale": "Codex-only overlay defines cross-client installation boundaries and helper usage while preserving upstream Claude behavior."
+    },
+    {
+      "skill": "verify-changes",
+      "path": "verify-changes.patch",
+      "type": "unified-diff",
+      "target": "codex-only",
+      "sha256": "a320c9ada8781e6c3831cc45241d45bf5366280e24c28e10f6768b7194a1fcdf",
+      "rationale": "Current reviewed Codex overlay needed to preserve adapter-specific behavior while keeping upstream canonical."
+    }
+  ],
+  "validated_upstream_head": "14dea81da487b2904ea7d69a27295f1869206cdf"
+}
