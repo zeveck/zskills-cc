@@ -1,8 +1,13 @@
-# ZSkills Codex/Claude Compatibility
+# ZSkills CC
 
-This repository ports the core workflows from
-[`zeveck/zskills`](https://github.com/zeveck/zskills) into a generated skill
-set that can be installed for Codex while preserving a clean Claude install.
+This repository is a Codex-converted version of
+[`zeveck/zskills`](https://github.com/zeveck/zskills). It is meant to preserve
+the original ZSkills intent while making the workflows usable from both Codex
+and Claude.
+
+The project name "CC" is shorthand for Claude/Codex compatibility: one source
+tree generates a Codex install with compatibility adapters and a Claude install
+without Codex-specific adapter text.
 
 The goal is not to fork the skill bodies by hand. The source of truth is:
 
@@ -17,6 +22,8 @@ regenerated as needed.
 
 ## What This Provides
 
+- A reproducible conversion pipeline from original ZSkills to Claude/Codex
+  compatible generated installs.
 - Codex-compatible generated skills with a shared adapter block.
 - Claude generated skills without Codex adapter text.
 - Shared helpers for:
