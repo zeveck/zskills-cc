@@ -33,6 +33,19 @@ run bash "$ROOT/scripts/generate-codex-skills.sh" --client codex --output "$ROOT
 run bash "$ROOT/scripts/generate-codex-skills.sh" --client claude --output "$ROOT/build/claude-skills"
 run python "$ROOT/scripts/verify-generated-zskills.py" "${ALLOW_ARGS[@]}"
 
+if [ -d "$ROOT/.claude/skills" ]; then
+  tmp_claude=$(mktemp -d)
+  run bash "$ROOT/scripts/generate-codex-skills.sh" --client claude --output "$tmp_claude"
+  if ! diff -qr \
+    --exclude generation-manifest.json \
+    --exclude scripts \
+    "$tmp_claude" "$ROOT/.claude/skills" >/tmp/zskills-fidelity-claude-drift.out; then
+    cat /tmp/zskills-fidelity-claude-drift.out
+    echo "FAILED: checked-in .claude/skills drifted from generated Claude skills" >&2
+    exit 1
+  fi
+fi
+
 if rg "ZSKILLS_CODEX_COMPAT|Codex Compatibility|Codex-installed|Codex adapter" "$ROOT/build/claude-skills" >/tmp/zskills-fidelity-claude-leak.out; then
   cat /tmp/zskills-fidelity-claude-leak.out
   echo "FAILED: generated Claude skills contain Codex adapter text" >&2

@@ -165,6 +165,7 @@ install_claude() {
     --output "$tmp/claude-skills" \
     --manifest "$repo_root/codex-overlays/manifest.json" \
     --adapter "$repo_root/templates/codex-compat-block.md"
+  rm -rf "$project_root/.claude/skills"
   mkdir -p "$project_root/.claude/skills"
   find "$tmp/claude-skills" -mindepth 1 -maxdepth 1 -type d ! -name scripts -exec cp -a {} "$project_root/.claude/skills/" \;
   ensure_config "$project_root/.claude/zskills-config.json" "$project_root/.codex/zskills-config.json"

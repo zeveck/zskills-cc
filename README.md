@@ -11,9 +11,10 @@ without Codex-specific adapter text.
 
 This is intentionally a conversion and development harness, not just a generated
 skill dump. Tracked development setup such as `.devcontainer/` is source for
-reproducing the environment. Generated or per-user client state such as
-`.claude/skills/` and `.claude/settings.local.json` stays ignored and should be
-recreated from the scripts.
+reproducing the environment. The repo also checks in `.claude/skills` so a fresh
+clone is immediately a Claude workspace with the converted ZSkills available.
+Per-user client state such as `.claude/settings.local.json` and
+`.claude/zskills-config.json` stays ignored and should be recreated locally.
 
 The goal is not to fork the skill bodies by hand. The source of truth is:
 
@@ -55,7 +56,8 @@ regenerated as needed.
 | `reports/` | Execution report and verification record. |
 | `local-patches/` | Documented local upstream patch queue entries. |
 | `.devcontainer/` | Reproducible development environment setup. |
-| `.claude/README.md` | Documents ignored local Claude state. |
+| `.claude/skills/` | Checked-in Claude-facing generated skills for clone-ready use. |
+| `.claude/README.md` | Documents local Claude state boundaries. |
 
 ## Prerequisites
 
