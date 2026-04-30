@@ -38,7 +38,16 @@ run_fail() {
 
 codex_project="$TMP/codex-project"
 codex_home="$TMP/codex-home"
-mkdir -p "$codex_project"
+mkdir -p "$codex_project" "$codex_home/skills/existing" "$codex_home/skills/run-plan"
+cat > "$codex_home/skills/existing/SKILL.md" <<'MD'
+---
+name: existing
+description: Existing unrelated Codex skill.
+---
+
+# Existing
+MD
+printf 'stale\n' > "$codex_home/skills/run-plan/OLD"
 run_ok "codex install" "$ROOT/scripts/zskills-install.sh" \
   --client codex \
   --project-root "$codex_project" \
@@ -49,9 +58,20 @@ run_ok "codex install" "$ROOT/scripts/zskills-install.sh" \
 rg "ZSKILLS_CODEX_COMPAT" "$codex_home/skills/run-plan/SKILL.md" >/dev/null && ok "codex adapter present" || not_ok "codex adapter present"
 [ -f "$codex_project/.codex/zskills-config.json" ] && ok "codex config written" || not_ok "codex config written"
 [ ! -d "$codex_project/.claude/skills" ] && ok "codex install leaves claude skills alone" || not_ok "codex install leaves claude skills alone"
+[ -f "$codex_home/skills/existing/SKILL.md" ] && ok "codex install preserves unrelated skill" || not_ok "codex install preserves unrelated skill"
+[ ! -e "$codex_home/skills/run-plan/OLD" ] && ok "codex install removes stale files in owned skill" || not_ok "codex install removes stale files in owned skill"
 
 claude_project="$TMP/claude-project"
-mkdir -p "$claude_project"
+mkdir -p "$claude_project/.claude/skills/existing" "$claude_project/.claude/skills/run-plan"
+cat > "$claude_project/.claude/skills/existing/SKILL.md" <<'MD'
+---
+name: existing
+description: Existing unrelated Claude skill.
+---
+
+# Existing
+MD
+printf 'stale\n' > "$claude_project/.claude/skills/run-plan/OLD"
 run_ok "claude install" "$ROOT/scripts/zskills-install.sh" \
   --client claude \
   --project-root "$claude_project" \
@@ -61,6 +81,8 @@ run_ok "claude install" "$ROOT/scripts/zskills-install.sh" \
 [ -f "$claude_project/.claude/skills/run-plan/SKILL.md" ] && ok "claude skills installed" || not_ok "claude skills installed"
 ! rg "ZSKILLS_CODEX_COMPAT|Codex Compatibility|Codex-installed|Codex adapter" "$claude_project/.claude/skills" >/tmp/zskills-install-test.out && ok "claude install has no codex adapter" || { cat /tmp/zskills-install-test.out; not_ok "claude install has no codex adapter"; }
 [ -f "$claude_project/.claude/zskills-config.json" ] && ok "claude config written" || not_ok "claude config written"
+[ -f "$claude_project/.claude/skills/existing/SKILL.md" ] && ok "claude install preserves unrelated skill" || not_ok "claude install preserves unrelated skill"
+[ ! -e "$claude_project/.claude/skills/run-plan/OLD" ] && ok "claude install removes stale files in owned skill" || not_ok "claude install removes stale files in owned skill"
 
 both_project="$TMP/both-project"
 both_home="$TMP/both-codex-home"

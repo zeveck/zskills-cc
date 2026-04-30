@@ -120,6 +120,18 @@ Install both and intentionally mirror config:
 bash scripts/zskills-install.sh --client both --mirror-config
 ```
 
+Install safety boundary:
+
+- Default installs preserve unrelated skills in `$CODEX_HOME/skills` and
+  project `.claude/skills`.
+- Only generated ZSkills-owned entries are replaced. Existing skill directories
+  with the same generated ZSkills names are replaced so stale files inside owned
+  skills cannot linger.
+- Codex root support files directly under `$CODEX_HOME/skills` are replaced only
+  by known generated ZSkills-CC files, not by deleting the whole skills root.
+- Use `--replace-all` (alias: `--clean`) only when intentionally replacing the
+  entire destination skills directory.
+
 Project config is client-scoped:
 
 - Codex: `.codex/zskills-config.json`

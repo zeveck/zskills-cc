@@ -4,12 +4,16 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  zskills-install.sh [--client codex|claude|both|auto] [--project-root PATH] [--codex-home PATH] [--upstream PATH] [--mirror-config]
+  zskills-install.sh [--client codex|claude|both|auto] [--project-root PATH] [--codex-home PATH] [--upstream PATH] [--mirror-config] [--replace-all]
 
 Installs generated Codex ZSkills to a Codex home and/or upstream-clean Claude
 ZSkills to a project .claude directory. Project config is intentionally
 client-scoped: .codex/zskills-config.json for Codex, .claude/zskills-config.json
 for Claude.
+
+By default, install preserves unrelated skills and replaces only generated
+ZSkills-owned entries. Use --replace-all only when intentionally replacing the
+entire destination skills directory.
 EOF
 }
 
@@ -18,6 +22,7 @@ project_root=""
 codex_home="${CODEX_HOME:-$HOME/.codex}"
 upstream="$HOME/.codex/zskills-portable"
 mirror_config=0
+replace_all=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -26,6 +31,7 @@ while [ "$#" -gt 0 ]; do
     --codex-home) codex_home="${2:-}"; shift 2 ;;
     --upstream) upstream="${2:-}"; shift 2 ;;
     --mirror-config) mirror_config=1; shift ;;
+    --replace-all|--clean) replace_all=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -144,14 +150,40 @@ mirror_configs() {
   echo "Mirrored dual-client config between .codex and .claude."
 }
 
+sync_generated_entries() {
+  local source_dir=$1
+  local dest_dir=$2
+  local mode=${3:-all}
+
+  mkdir -p "$dest_dir"
+  while IFS= read -r entry; do
+    local name
+    name=$(basename "$entry")
+    if [ "$mode" = "dirs-only" ] && [ ! -d "$entry" ]; then
+      continue
+    fi
+    rm -rf "$dest_dir/$name"
+    cp -a "$entry" "$dest_dir/"
+  done < <(find "$source_dir" -mindepth 1 -maxdepth 1 ! -name scripts -print | sort)
+}
+
 install_codex() {
-  mkdir -p "$codex_home"
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' RETURN
   python "$repo_root/scripts/generate-codex-skills.py" \
     --client codex \
     --upstream "$upstream" \
-    --output "$codex_home/skills" \
+    --output "$tmp/codex-skills" \
     --manifest "$repo_root/codex-overlays/manifest.json" \
     --adapter "$repo_root/templates/codex-compat-block.md"
+  if [ "$replace_all" -eq 1 ]; then
+    rm -rf "$codex_home/skills"
+  fi
+  sync_generated_entries "$tmp/codex-skills" "$codex_home/skills" all
+  if [ -d "$tmp/codex-skills/scripts" ]; then
+    rm -rf "$codex_home/skills/scripts"
+    cp -a "$tmp/codex-skills/scripts" "$codex_home/skills/"
+  fi
   ensure_config "$project_root/.codex/zskills-config.json" "$project_root/.claude/zskills-config.json"
   echo "Installed Codex ZSkills to $codex_home/skills"
 }
@@ -165,9 +197,10 @@ install_claude() {
     --output "$tmp/claude-skills" \
     --manifest "$repo_root/codex-overlays/manifest.json" \
     --adapter "$repo_root/templates/codex-compat-block.md"
-  rm -rf "$project_root/.claude/skills"
-  mkdir -p "$project_root/.claude/skills"
-  find "$tmp/claude-skills" -mindepth 1 -maxdepth 1 -type d ! -name scripts -exec cp -a {} "$project_root/.claude/skills/" \;
+  if [ "$replace_all" -eq 1 ]; then
+    rm -rf "$project_root/.claude/skills"
+  fi
+  sync_generated_entries "$tmp/claude-skills" "$project_root/.claude/skills" dirs-only
   ensure_config "$project_root/.claude/zskills-config.json" "$project_root/.codex/zskills-config.json"
   echo "Installed Claude ZSkills to $project_root/.claude/skills"
 }
