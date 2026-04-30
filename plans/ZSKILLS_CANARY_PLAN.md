@@ -48,8 +48,8 @@ Out of scope:
 
 | Phase | Status | Summary |
 |---|---|---|
-| Phase 1: Harness And Fixtures | Next | Create the reusable fake repo and canary runner. |
-| Phase 2: Static And Loader Canaries | Pending | Verify project-local skill loading and generated skill boundaries. |
+| Phase 1: Harness And Fixtures | Done | Added `tests/test-zskills-canaries.sh`, fake repo creation, project-local Codex skill loading canary, logs under `.tmp/`, and `.tmp/` ignore. |
+| Phase 2: Static And Loader Canaries | Next | Verify project-local skill loading and generated skill boundaries. |
 | Phase 3: Low-Risk Skill Canaries | Pending | Exercise read-only/reference/planning skills with file assertions. |
 | Phase 4: Workflow Skill Canaries | Pending | Exercise execution, verification, scheduling, and landing workflows locally. |
 | Phase 5: Domain Add-On Canaries | Pending | Exercise block-diagram add-ons against fake block-diagram fixtures. |

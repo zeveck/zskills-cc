@@ -1,4 +1,5 @@
 build/
+.tmp/
 
 .zskills/
 reports/PLAN_REPORT.md
