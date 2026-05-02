@@ -48,7 +48,7 @@ Out of scope:
 | Phase 2: First Cron Handoff Marker | Done | Created `reports/cron-canary/phase-2.md` after cron handoff reached this retry turn. |
 | Phase 3: Middle Handoff Marker | Done | Created `reports/cron-canary/phase-3.md` after the second cron-driven handoff. |
 | Phase 4: Penultimate Handoff Marker | Done | Created `reports/cron-canary/phase-4.md` after the third cron-driven handoff. |
-| Phase 5: Completion And Idle Cleanup Marker | Next | Create final marker and verify idle cleanup evidence. |
+| Phase 5: Completion And Idle Cleanup Marker | Done | Created `reports/cron-canary/phase-5.md` and verified idle cleanup evidence. |
 
 ## Phase 1: Runner Bootstrap Marker
 
@@ -226,7 +226,7 @@ rg "REAL_CRON_HANDOFF_CANARY_PLAN.md finish auto" .zskills/schedules -g '*.json'
 
 ## Phase 5: Completion And Idle Cleanup Marker
 
-Status: Pending
+Status: Done
 
 ### Objective
 
