@@ -47,8 +47,8 @@ Out of scope:
 | Phase 1: Runner Bootstrap Marker | Done | Created `reports/cron-canary/phase-1.md` and enabled the scheduled runner. |
 | Phase 2: First Cron Handoff Marker | Done | Created `reports/cron-canary/phase-2.md` after cron handoff reached this retry turn. |
 | Phase 3: Middle Handoff Marker | Done | Created `reports/cron-canary/phase-3.md` after the second cron-driven handoff. |
-| Phase 4: Penultimate Handoff Marker | Next | Prove the fourth scheduled turn still sees correct plan state. |
-| Phase 5: Completion And Idle Cleanup Marker | Pending | Create final marker and verify idle cleanup evidence. |
+| Phase 4: Penultimate Handoff Marker | Done | Created `reports/cron-canary/phase-4.md` after the third cron-driven handoff. |
+| Phase 5: Completion And Idle Cleanup Marker | Next | Create final marker and verify idle cleanup evidence. |
 
 ## Phase 1: Runner Bootstrap Marker
 
@@ -186,7 +186,7 @@ scripts/zskills-scheduler.sh list
 
 ## Phase 4: Penultimate Handoff Marker
 
-Status: Pending
+Status: Done
 
 ### Objective
 
