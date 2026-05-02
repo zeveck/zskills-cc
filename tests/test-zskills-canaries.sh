@@ -75,7 +75,8 @@ create_fake_repo() {
   LOG_DIR="$RUN_ROOT/logs"
   mkdir -p "$REPO/.codex" "$LOG_DIR"
 
-  cp -a "$ROOT/.codex/skills" "$REPO/.codex/"
+  mkdir -p "$REPO/.agents"
+  cp -a "$ROOT/.agents/skills" "$REPO/.agents/"
   mkdir -p "$REPO/scripts"
   cp "$ROOT"/scripts/zskills-*.sh "$REPO/scripts/"
   chmod +x "$REPO"/scripts/zskills-*.sh
@@ -125,8 +126,8 @@ SH
 Disposable fixture repository for local ZSkills canaries.
 MD
 
-  mkdir -p "$REPO/.codex/skills/project-canary"
-  cat > "$REPO/.codex/skills/project-canary/SKILL.md" <<'MD'
+  mkdir -p "$REPO/.agents/skills/project-canary"
+  cat > "$REPO/.agents/skills/project-canary/SKILL.md" <<'MD'
 ---
 name: project-canary
 description: Use when the user asks for PROJECT_SKILL_CANARY_49217. Reply with exactly PROJECT_LAYER_SKILL_LOADED_49217 and no other text.
@@ -169,7 +170,7 @@ run_codex_canary() {
 run_harness_phase() {
   create_fake_repo
   assert_no_real_remote "$REPO"
-  assert_file_exists "$REPO/.codex/skills/run-plan/SKILL.md" "copied project codex skills"
+  assert_file_exists "$REPO/.agents/skills/run-plan/SKILL.md" "copied project codex skills"
   assert_file_exists "$REPO/scripts/zskills-config.sh" "copied helper scripts"
   run_codex_canary \
     "project-skill-loader" \

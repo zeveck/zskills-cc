@@ -20,7 +20,7 @@ without Codex-specific adapter text.
 This is intentionally a conversion and development harness, not just a generated
 skill dump. Tracked development setup such as `.devcontainer/` is source for
 reproducing the environment. The repo also checks in `.claude/skills` and
-`.codex/skills` so a fresh clone is immediately usable by both Claude and Codex.
+`.agents/skills` so a fresh clone is immediately usable by both Claude and Codex.
 Per-user client state such as `.claude/settings.local.json` and local
 `.claude/zskills-config.json` / `.codex/zskills-config.json` stays ignored and
 should be recreated locally.
@@ -68,7 +68,7 @@ regenerated as needed.
 | `local-patches/` | Documented local upstream patch queue entries. |
 | `.devcontainer/` | Reproducible development environment setup. |
 | `.claude/skills/` | Checked-in Claude-facing generated skills for clone-ready use. |
-| `.codex/skills/` | Checked-in Codex-facing generated skills for clone-ready use. |
+| `.agents/skills/` | Checked-in Codex-facing generated skills for clone-ready use. |
 | `.claude/README.md` | Documents local Claude state boundaries. |
 
 ## Prerequisites
@@ -98,15 +98,20 @@ bash scripts/generate-codex-skills.sh \
 
 ## Install
 
-Install Codex skills to `$CODEX_HOME/skills`:
+Install Codex skills into the current project `.agents/skills` directory:
 
 ```bash
 bash scripts/zskills-install.sh --client codex
 ```
 
-For Codex, a clone of this repository also exposes project-local skills from
-`.codex/skills`. The global install is still useful when you want the skills
-available outside this repository.
+This matches Codex's documented repo-scoped skill location. ZSkills-CC uses it
+by default so each repository is self-contained and does not modify the
+user/container-level Codex skill set. Install globally only when you
+intentionally want these skills available outside the current repository:
+
+```bash
+bash scripts/zskills-install.sh --client codex --codex-scope global
+```
 
 Install Claude skills into the project `.claude/skills` directory:
 
@@ -122,13 +127,16 @@ bash scripts/zskills-install.sh --client both --mirror-config
 
 Install safety boundary:
 
-- Default installs preserve unrelated skills in `$CODEX_HOME/skills` and
-  project `.claude/skills`.
+- Default installs preserve unrelated skills in user `.agents/skills` and
+  project `.agents/skills` / `.claude/skills`. Codex defaults to project
+  `.agents/skills`; user `.agents/skills` is touched only with
+  `--codex-scope global`.
 - Only generated ZSkills-owned entries are replaced. Existing skill directories
   with the same generated ZSkills names are replaced so stale files inside owned
   skills cannot linger.
-- Codex root support files directly under `$CODEX_HOME/skills` are replaced only
-  by known generated ZSkills-CC files, not by deleting the whole skills root.
+- Codex root support files directly under the selected Codex skills directory
+  are replaced only by known generated ZSkills-CC files, not by deleting the
+  whole skills root.
 - Use `--replace-all` (alias: `--clean`) only when intentionally replacing the
   entire destination skills directory.
 
@@ -154,7 +162,7 @@ bash tests/test-zskills-install.sh
 python scripts/verify-generated-zskills.py \
   --allow-local-upstream \
   --patch-queue-entry clear-tracking-recursive
-python ~/.codex/skills/verify-zskills-codex.py
+python .agents/skills/verify-zskills-codex.py
 ```
 
 The full suite verifies:
@@ -178,11 +186,27 @@ file-backed schedule state under `.zskills/schedules/` and a due runner:
 cd /path/to/repo && scripts/zskills-run-due.sh
 ```
 
-An OS cron entry can drive due jobs:
+Autonomous skills enable the managed OS cron runner for the repo when they
+need background handoff, and disable it again when no active schedules remain.
+The helper is still available for explicit inspection:
 
-```cron
-* * * * * cd /path/to/repo && /bin/bash scripts/zskills-run-due.sh >> .zskills/cron-driver.log 2>&1
+```bash
+scripts/zskills-scheduler.sh runner-status --repo-path /path/to/repo
 ```
+
+This adds only a marked `zskills-cc` block to the user crontab and preserves
+unrelated cron entries. The implementation commands are:
+
+```bash
+scripts/zskills-scheduler.sh runner-enable --repo-path /path/to/repo
+scripts/zskills-scheduler.sh runner-disable-if-idle --repo-path /path/to/repo
+scripts/zskills-scheduler.sh runner-disable --repo-path /path/to/repo
+```
+
+`run-plan finish auto`, `research-and-go`, and recurring `every` workflows
+must confirm the scheduled runner before they start autonomous work. If it is
+not enabled, they should enable it automatically before executing a phase or
+writing a new schedule. If enabling fails, they stop before doing work.
 
 Feedback is file-based:
 
@@ -190,9 +214,9 @@ Feedback is file-based:
 - run logs: `.zskills/logs/<job-id>/<timestamp>.log`
 - plan reports: `reports/plan-*.md`
 
-The real cron canary verified that OS cron can drive
-`run-plan finish auto direct` across three separate Codex turns, with one-shot
-handoff jobs and logs for each turn.
+The cron canary should verify that OS cron can drive `run-plan finish auto
+direct` across separate Codex turns, with one-shot handoff jobs and logs for
+each turn.
 
 ## Current Assurance
 
@@ -201,11 +225,11 @@ Verified:
 - all 22 generated skills have valid frontmatter
 - generated Claude skills match upstream originals exactly
 - generated Codex skills differ only by adapter block or declared overlays
-- checked-in `.claude/skills` and `.codex/skills` match fresh generated output
+- checked-in `.claude/skills` and `.agents/skills` match fresh generated output
 - direct, cherry-pick, and PR landing modes are preserved in helpers and skill
   instructions
 - tracking filesystem rules are preserved and tested
-- real cron-backed `run-plan finish auto direct` works end to end
+- file-backed scheduler helpers and managed cron runner install/status work
 
 Still worth canarying before relying on unattended production work:
 

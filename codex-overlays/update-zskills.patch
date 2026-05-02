@@ -9,17 +9,17 @@
 +
 +```bash
 +ZSKILLS_INSTALL_HELPER="$PROJECT_ROOT/scripts/zskills-install.sh"
-+[ -x "$ZSKILLS_INSTALL_HELPER" ] || ZSKILLS_INSTALL_HELPER="$HOME/.codex/skills/scripts/zskills-install.sh"
++[ -x "$ZSKILLS_INSTALL_HELPER" ] || ZSKILLS_INSTALL_HELPER="$HOME/.agents/skills/scripts/zskills-install.sh"
 +```
 +
 +Supported client flags:
 +
-+- `--client codex` — generate Codex skills from upstream plus declared Codex overlays into `~/.codex/skills`, write or preserve `.codex/zskills-config.json`, and leave `.claude/skills` untouched.
++- `--client codex` — generate Codex skills from upstream plus declared Codex overlays into project `.agents/skills`, write or preserve `.codex/zskills-config.json`, and leave `.claude/skills` untouched.
 +- `--client claude` — install upstream-clean skills into `.claude/skills`, write or preserve `.claude/zskills-config.json`, and do not inject `ZSKILLS_CODEX_COMPAT`.
 +- `--client both` — intentionally mirror shared config between `.codex` and `.claude`, then install both clients. If configs diverge, stop unless the user explicitly confirms mirroring by using `--mirror-config`.
 +- `--client auto` or no client flag — detect conservatively: existing dual-client markers mean `both`, Codex markers mean `codex`, Claude markers mean `claude`, otherwise default to `codex` in a Codex runtime.
 +
-+If the helper is unavailable, follow the client boundaries above manually and report degraded installer fidelity. Claude-native installs keep the original project-local hook behavior; Codex installs use generated global skills and procedural fallbacks.
++If the helper is unavailable, follow the client boundaries above manually and report degraded installer fidelity. Claude-native installs keep the original project-local hook behavior; Codex installs use generated project skills and procedural fallbacks.
 
  **Invocation:**
 
@@ -61,7 +61,7 @@
  in update mode.
 +
 +**Codex install boundary:** Codex skills are global user-level assets under
-+`~/.codex/skills/<name>/SKILL.md`. Claude skills are project-local assets
++`.agents/skills/<name>/SKILL.md`. Claude skills are project-local assets
 +under `.claude/skills/<name>/SKILL.md`. Do not overwrite project-local Claude
 +skills when updating the global Codex install unless the user explicitly asked
 +for dual-client project setup. For a Codex project setup, copy portable

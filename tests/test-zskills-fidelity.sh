@@ -32,6 +32,8 @@ run python -m py_compile \
 
 run bash "$ROOT/scripts/generate-codex-skills.sh" --client codex --output "$ROOT/build/codex-skills"
 run bash "$ROOT/scripts/generate-codex-skills.sh" --client claude --output "$ROOT/build/claude-skills"
+rg "runner-status --repo-path" "$ROOT/build/codex-skills/run-plan/SKILL.md" >/dev/null
+rg "runner-status --repo-path" "$ROOT/build/codex-skills/research-and-go/SKILL.md" >/dev/null
 run python "$ROOT/scripts/verify-generated-zskills.py" "${ALLOW_ARGS[@]}"
 
 if [ -d "$ROOT/.claude/skills" ]; then
@@ -47,12 +49,12 @@ if [ -d "$ROOT/.claude/skills" ]; then
   fi
 fi
 
-if [ -d "$ROOT/.codex/skills" ]; then
+if [ -d "$ROOT/.agents/skills" ]; then
   tmp_codex=$(mktemp -d)
   run bash "$ROOT/scripts/generate-codex-skills.sh" --client codex --output "$tmp_codex"
-  if ! diff -qr "$tmp_codex" "$ROOT/.codex/skills" >/tmp/zskills-fidelity-codex-drift.out; then
+  if ! diff -qr "$tmp_codex" "$ROOT/.agents/skills" >/tmp/zskills-fidelity-codex-drift.out; then
     cat /tmp/zskills-fidelity-codex-drift.out
-    echo "FAILED: checked-in .codex/skills drifted from generated Codex skills" >&2
+    echo "FAILED: checked-in .agents/skills drifted from generated Codex skills" >&2
     exit 1
   fi
 fi
@@ -66,8 +68,8 @@ fi
 run bash "$UPSTREAM/tests/test-skill-conformance.sh"
 run bash "$UPSTREAM/tests/test-tracking-integration.sh"
 
-if [ -f "$HOME/.codex/skills/verify-zskills-codex.py" ]; then
-  run python "$HOME/.codex/skills/verify-zskills-codex.py"
+if [ -f "$ROOT/.agents/skills/verify-zskills-codex.py" ]; then
+  run python "$ROOT/.agents/skills/verify-zskills-codex.py"
 fi
 
 tmp=$(mktemp -d)

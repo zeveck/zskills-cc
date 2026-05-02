@@ -1,5 +1,24 @@
 --- SKILL.md
 +++ SKILL.md
+@@ -230,6 +230,18 @@
+ only removes the hardcoded wrapper from `/research-and-go`'s kickoff.
+
+ ```bash
++# Codex only: this kickoff relies on run-plan finish auto, so ensure the
++# scheduled runner is enabled before creating tracking or starting execution.
++ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
++[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
++if [ -x "$ZSKILLS_SCHEDULER_HELPER" ]; then
++  "$ZSKILLS_SCHEDULER_HELPER" runner-status --repo-path "$PROJECT_ROOT" >/dev/null 2>&1 || \
++  "$ZSKILLS_SCHEDULER_HELPER" runner-enable --repo-path "$PROJECT_ROOT" || {
++    echo "ERROR: /research-and-go could not enable the ZSkills scheduled runner for /run-plan finish auto."
++    exit 1
++  }
++fi
++
+ if [ -n "$LANDING_ARG" ]; then
+   RUN_PROMPT="Run /run-plan $META_PLAN_PATH finish auto $LANDING_ARG"
+ else
 @@ -277,6 +277,15 @@
  auto-wipe -- `requires.verify-changes.final.*` and its fulfillment marker
  are pipeline-completion records that should survive until the user confirms

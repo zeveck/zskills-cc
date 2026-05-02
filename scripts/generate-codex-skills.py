@@ -89,7 +89,7 @@ def insert_adapter(skill_file: Path, adapter: str) -> None:
 
 def apply_patch_file(skill_dir: Path, patch_file: Path) -> None:
     subprocess.run(
-        ["patch", "--silent", "-p0", "-i", str(patch_file.resolve())],
+        ["patch", "--silent", "--no-backup-if-mismatch", "-p0", "-i", str(patch_file.resolve())],
         cwd=skill_dir,
         check=True,
     )

@@ -38,28 +38,62 @@ run_fail() {
 
 codex_project="$TMP/codex-project"
 codex_home="$TMP/codex-home"
-mkdir -p "$codex_project" "$codex_home/skills/existing" "$codex_home/skills/run-plan"
-cat > "$codex_home/skills/existing/SKILL.md" <<'MD'
+mkdir -p "$codex_project/.agents/skills/existing" "$codex_project/.agents/skills/run-plan" "$codex_home/skills/global-existing"
+cat > "$codex_project/.agents/skills/existing/SKILL.md" <<'MD'
 ---
 name: existing
-description: Existing unrelated Codex skill.
+description: Existing unrelated project Codex skill.
 ---
 
 # Existing
 MD
-printf 'stale\n' > "$codex_home/skills/run-plan/OLD"
+cat > "$codex_home/skills/global-existing/SKILL.md" <<'MD'
+---
+name: global-existing
+description: Existing unrelated global Codex skill.
+---
+
+# Global Existing
+MD
+printf 'stale\n' > "$codex_project/.agents/skills/run-plan/OLD"
 run_ok "codex install" "$ROOT/scripts/zskills-install.sh" \
   --client codex \
   --project-root "$codex_project" \
   --codex-home "$codex_home" \
   --upstream /home/vscode/.codex/zskills-portable
 
-[ -f "$codex_home/skills/run-plan/SKILL.md" ] && ok "codex skills installed" || not_ok "codex skills installed"
-rg "ZSKILLS_CODEX_COMPAT" "$codex_home/skills/run-plan/SKILL.md" >/dev/null && ok "codex adapter present" || not_ok "codex adapter present"
+[ -f "$codex_project/.agents/skills/run-plan/SKILL.md" ] && ok "codex project skills installed" || not_ok "codex project skills installed"
+rg "ZSKILLS_CODEX_COMPAT" "$codex_project/.agents/skills/run-plan/SKILL.md" >/dev/null && ok "codex project adapter present" || not_ok "codex project adapter present"
 [ -f "$codex_project/.codex/zskills-config.json" ] && ok "codex config written" || not_ok "codex config written"
 [ ! -d "$codex_project/.claude/skills" ] && ok "codex install leaves claude skills alone" || not_ok "codex install leaves claude skills alone"
-[ -f "$codex_home/skills/existing/SKILL.md" ] && ok "codex install preserves unrelated skill" || not_ok "codex install preserves unrelated skill"
-[ ! -e "$codex_home/skills/run-plan/OLD" ] && ok "codex install removes stale files in owned skill" || not_ok "codex install removes stale files in owned skill"
+[ -f "$codex_project/.agents/skills/existing/SKILL.md" ] && ok "codex project install preserves unrelated skill" || not_ok "codex project install preserves unrelated skill"
+[ ! -e "$codex_project/.agents/skills/run-plan/OLD" ] && ok "codex project install removes stale files in owned skill" || not_ok "codex project install removes stale files in owned skill"
+[ -f "$codex_home/skills/global-existing/SKILL.md" ] && ok "codex project install leaves global skills alone" || not_ok "codex project install leaves global skills alone"
+[ ! -e "$codex_home/skills/run-plan/SKILL.md" ] && ok "codex project install does not write global skills" || not_ok "codex project install does not write global skills"
+
+global_project="$TMP/global-project"
+global_home="$TMP/global-codex-home"
+mkdir -p "$global_project" "$global_home/skills/existing" "$global_home/skills/run-plan"
+cat > "$global_home/skills/existing/SKILL.md" <<'MD'
+---
+name: existing
+description: Existing unrelated global Codex skill.
+---
+
+# Existing
+MD
+printf 'stale\n' > "$global_home/skills/run-plan/OLD"
+run_ok "codex global install" "$ROOT/scripts/zskills-install.sh" \
+  --client codex \
+  --codex-scope global \
+  --project-root "$global_project" \
+  --codex-home "$global_home" \
+  --upstream /home/vscode/.codex/zskills-portable
+
+[ -f "$global_home/skills/run-plan/SKILL.md" ] && ok "codex global skills installed" || not_ok "codex global skills installed"
+rg "ZSKILLS_CODEX_COMPAT" "$global_home/skills/run-plan/SKILL.md" >/dev/null && ok "codex global adapter present" || not_ok "codex global adapter present"
+[ -f "$global_home/skills/existing/SKILL.md" ] && ok "codex global install preserves unrelated skill" || not_ok "codex global install preserves unrelated skill"
+[ ! -e "$global_home/skills/run-plan/OLD" ] && ok "codex global install removes stale files in owned skill" || not_ok "codex global install removes stale files in owned skill"
 
 claude_project="$TMP/claude-project"
 mkdir -p "$claude_project/.claude/skills/existing" "$claude_project/.claude/skills/run-plan"
@@ -108,7 +142,8 @@ run_ok "dual install mirrors config" "$ROOT/scripts/zskills-install.sh" \
   --upstream /home/vscode/.codex/zskills-portable
 
 cmp -s "$both_project/.codex/zskills-config.json" "$both_project/.claude/zskills-config.json" && ok "dual configs mirrored" || not_ok "dual configs mirrored"
-rg "ZSKILLS_CODEX_COMPAT" "$both_home/skills/run-plan/SKILL.md" >/dev/null && ok "dual codex adapter present" || not_ok "dual codex adapter present"
+rg "ZSKILLS_CODEX_COMPAT" "$both_project/.agents/skills/run-plan/SKILL.md" >/dev/null && ok "dual project codex adapter present" || not_ok "dual project codex adapter present"
+[ ! -e "$both_home/skills/run-plan/SKILL.md" ] && ok "dual install does not write global codex skills by default" || not_ok "dual install does not write global codex skills by default"
 ! rg "ZSKILLS_CODEX_COMPAT|Codex Compatibility|Codex-installed|Codex adapter" "$both_project/.claude/skills" >/tmp/zskills-install-test.out && ok "dual claude remains clean" || { cat /tmp/zskills-install-test.out; not_ok "dual claude remains clean"; }
 
 echo "Results: $pass passed, $fail failed"

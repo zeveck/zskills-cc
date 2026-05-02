@@ -83,7 +83,7 @@
      CONFIG_CONTENT=$(cat "$CONFIG_FILE")
      if [[ "$CONFIG_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
        CFG_LANDING="${BASH_REMATCH[1]}"
-@@ -105,12 +157,54 @@
+@@ -105,12 +157,61 @@
  fi
  ```
 
@@ -99,14 +99,21 @@
 +
 +If `$ZSKILLS_SCHEDULER_HELPER` is executable:
 +
-+- `every <SCHEDULE>` stores a schedule file with `zskills-scheduler.sh add --skill run-plan --args "<plan-file and flags without every/now>" --schedule "<SCHEDULE>" --client codex --runner-command "${ZSKILLS_RUNNER_COMMAND:-codex exec}"`. Do not include a fixed phase number unless the user explicitly asked for one.
++- Before starting any `finish auto` phase or registering any `every <SCHEDULE>`
++  job, run `"$ZSKILLS_SCHEDULER_HELPER" runner-status --repo-path "$PROJECT_ROOT"`.
++  If it fails because no runner is enabled or the runner is stale, run
++  `"$ZSKILLS_SCHEDULER_HELPER" runner-enable --repo-path "$PROJECT_ROOT"`
++  automatically and report that autonomous scheduling was enabled. If enabling
++  fails, stop before doing phase work or creating schedule files.
++- `every <SCHEDULE>` stores a schedule file with `zskills-scheduler.sh add --skill run-plan --args "<plan-file and flags without every/now>" --schedule "<SCHEDULE>" --client codex --runner-command "${ZSKILLS_RUNNER_COMMAND:-codex exec --sandbox danger-full-access}"`. Do not include a fixed phase number unless the user explicitly asked for one.
 +- `next` runs `zskills-scheduler.sh next --skill run-plan`.
-+- `stop` runs `zskills-scheduler.sh stop --skill run-plan`.
++- `stop` runs `zskills-scheduler.sh stop --skill run-plan`, then `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"`.
 +- standalone `now` runs `zskills-scheduler.sh trigger --skill run-plan` followed by `zskills-run-due.sh`.
++- After final completion or an unrecoverable blocked state, run `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"` so this repo's cron entry is removed when no active schedules remain.
 +
-+If the helper is unavailable, report unsupported and exit without claiming background execution. OS cron can drive due jobs with `cd "$PROJECT_ROOT" && scripts/zskills-run-due.sh`.
++If the helper is unavailable, report unsupported and exit without claiming background execution. OS cron can drive due jobs through the managed runner enabled by `zskills-scheduler.sh runner-enable`.
 +
-+**Validation:****Validation:**
++**Validation:**
 +
 +
 +**Codex preflight gates:** Before any commit, cherry-pick, PR creation,
@@ -185,7 +192,7 @@
 
  **This section applies when running `/run-plan <plan> finish auto`.**
 +
-+**Codex scheduler implementation:** If `zskills-scheduler.sh` and `zskills-run-due.sh` are available, `finish auto` may schedule the next top-level turn by storing a one-shot due job (`zskills-scheduler.sh add --one-shot`) whose args omit a fixed phase number, then relying on `run-plan` to re-read the plan and choose the next incomplete phase. If no file-backed scheduler is available, do not execute the CronCreate steps in this section. Run the next phase sequentially in the current session or pause and report the next explicit command. Do not claim a one-shot cron was created. This Codex override takes precedence over the detailed Claude CronCreate steps below until scheduler emulation is enabled.
++**Codex scheduler implementation:** If `zskills-scheduler.sh` and `zskills-run-due.sh` are available, `finish auto` may schedule the next top-level turn by storing a one-shot due job (`zskills-scheduler.sh add --one-shot`) whose args omit a fixed phase number, then relying on `run-plan` to re-read the plan and choose the next incomplete phase. Before starting the current phase, Codex must run `zskills-scheduler.sh runner-status --repo-path "$PROJECT_ROOT"`; if no scheduled runner is enabled or the runner is stale, run `zskills-scheduler.sh runner-enable --repo-path "$PROJECT_ROOT"` automatically and report that autonomous scheduling was enabled. If enabling fails, stop immediately before doing phase work and do not create schedule files. If no file-backed scheduler is available, do not execute the CronCreate steps in this section. Run the next phase sequentially in the current session or pause and report the next explicit command. Do not claim a one-shot cron was created. This Codex override takes precedence over the detailed Claude CronCreate steps below until scheduler emulation is enabled.
 
  In chunked finish auto mode, each plan phase runs as a separate top-level
  cron-fired turn. The current turn does NOT loop back to process the next

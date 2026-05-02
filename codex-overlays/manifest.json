@@ -63,7 +63,7 @@
       "path": "research-and-go.patch",
       "type": "unified-diff",
       "target": "codex-only",
-      "sha256": "50721acf6b2e9a2c0be4e1f89cf56aa4b78c2998ef9a6faa08214a8fdc7b9208",
+      "sha256": "67d550344d268d94582a189368afc883fb2e1e573454c3eb8685e01bdbbcf5f2",
       "rationale": "Codex-only overlay adds procedural preflight gates for dangerous operations while preserving upstream Claude hook behavior."
     },
     {
@@ -71,7 +71,7 @@
       "path": "run-plan.patch",
       "type": "unified-diff",
       "target": "codex-only",
-      "sha256": "3ce1313fe8daa855fe45416d741725d7add999eca4993cd0fe74cb85b11c173b",
+      "sha256": "fa78739f80afeb6cd41faf3d5b330be574f179bf097bff380efa135f0221dce5",
       "rationale": "Codex-only overlay adopts file-backed scheduler semantics while preserving native Claude cron instructions."
     },
     {
@@ -79,7 +79,7 @@
       "path": "update-zskills.patch",
       "type": "unified-diff",
       "target": "codex-only",
-      "sha256": "d6df47f8f19eef60dc88eacffa0c96ff207a5cd1a0260b2093efccb8a1261009",
+      "sha256": "59ba10a9ce504e7e812eba488b78721890a297478956e27c45467d004e4aec88",
       "rationale": "Codex-only overlay defines cross-client installation boundaries and helper usage while preserving upstream Claude behavior."
     },
     {

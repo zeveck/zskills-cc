@@ -21,6 +21,16 @@ run_ok() {
   fi
 }
 
+run_fail() {
+  local name=$1; shift
+  if "$@" >/tmp/zskills-scheduler-test.out 2>/tmp/zskills-scheduler-test.err; then
+    cat /tmp/zskills-scheduler-test.out
+    not_ok "$name"
+  else
+    ok "$name"
+  fi
+}
+
 cd "$TMP"
 git init -q
 git config user.email test@example.com
@@ -31,6 +41,24 @@ git commit -q -m init
 mkdir -p scripts
 cp "$ROOT/scripts/zskills-scheduler.sh" scripts/
 cp "$ROOT/scripts/zskills-run-due.sh" scripts/
+export ZSKILLS_CRONTAB_FILE="$TMP/fake-crontab"
+
+printf '# unrelated user cron\n17 3 * * * echo keep-me\n' > "$ZSKILLS_CRONTAB_FILE"
+run_fail "runner status fails before enable" scripts/zskills-scheduler.sh runner-status --repo-path "$TMP"
+run_ok "runner enable" scripts/zskills-scheduler.sh runner-enable --repo-path "$TMP"
+rg -F "echo keep-me" "$ZSKILLS_CRONTAB_FILE" >/dev/null && ok "runner enable preserves unrelated crontab" || not_ok "runner enable preserves unrelated crontab"
+rg -F "zskills-run-due.sh" "$ZSKILLS_CRONTAB_FILE" >/dev/null && ok "runner enable writes due runner" || not_ok "runner enable writes due runner"
+run_ok "runner enable is idempotent" scripts/zskills-scheduler.sh runner-enable --repo-path "$TMP"
+[ "$(rg -c "zskills-cc scheduled runner start" "$ZSKILLS_CRONTAB_FILE")" -eq 1 ] && ok "runner enable avoids duplicate blocks" || not_ok "runner enable avoids duplicate blocks"
+run_ok "runner status passes after enable" scripts/zskills-scheduler.sh runner-status --repo-path "$TMP"
+sed -i 's/zskills-run-due.sh/zskills-run-due-stale.sh/' "$ZSKILLS_CRONTAB_FILE"
+run_fail "runner status detects stale block" scripts/zskills-scheduler.sh runner-status --repo-path "$TMP"
+run_ok "runner enable repairs stale block" scripts/zskills-scheduler.sh runner-enable --repo-path "$TMP"
+run_ok "runner disable" scripts/zskills-scheduler.sh runner-disable --repo-path "$TMP"
+rg -F "echo keep-me" "$ZSKILLS_CRONTAB_FILE" >/dev/null && ok "runner disable preserves unrelated crontab" || not_ok "runner disable preserves unrelated crontab"
+! rg -F "zskills-run-due.sh" "$ZSKILLS_CRONTAB_FILE" >/dev/null && ok "runner disable removes managed block" || not_ok "runner disable removes managed block"
+run_ok "runner install alias" scripts/zskills-scheduler.sh runner-install --repo-path "$TMP"
+run_ok "runner uninstall alias" scripts/zskills-scheduler.sh runner-uninstall --repo-path "$TMP"
 
 run_ok "add interval job" scripts/zskills-scheduler.sh add \
   --id run-plan-demo \
@@ -45,6 +73,10 @@ run_ok "add every-hour job" scripts/zskills-scheduler.sh add \
   --args "summary" \
   --schedule "every hour" \
   --runner-command "printf"
+
+run_ok "runner enable for active schedule" scripts/zskills-scheduler.sh runner-enable --repo-path "$TMP"
+run_ok "runner disable-if-idle keeps active schedule" scripts/zskills-scheduler.sh runner-disable-if-idle --repo-path "$TMP"
+rg -F "zskills-run-due.sh" "$ZSKILLS_CRONTAB_FILE" >/dev/null && ok "runner disable-if-idle keeps cron when active" || not_ok "runner disable-if-idle keeps cron when active"
 
 [ -f .zskills/schedules/run-plan-demo.json ] && ok "schedule file written" || not_ok "schedule file written"
 scripts/zskills-scheduler.sh list | rg "run-plan-demo" >/dev/null && ok "list shows job" || not_ok "list shows job"
@@ -81,6 +113,9 @@ from pathlib import Path
 j = json.loads(Path(".zskills/schedules/run-plan-demo.json").read_text())
 raise SystemExit(0 if j["last_status"] == "stopped" else 1)
 PY
+run_ok "stop remaining active schedule" scripts/zskills-scheduler.sh stop --skill briefing
+run_ok "runner disable-if-idle removes idle cron" scripts/zskills-scheduler.sh runner-disable-if-idle --repo-path "$TMP"
+! rg -F "zskills-run-due.sh" "$ZSKILLS_CRONTAB_FILE" >/dev/null && ok "runner disable-if-idle removes cron when idle" || not_ok "runner disable-if-idle removes cron when idle"
 
 run_ok "add missing-tool job" scripts/zskills-scheduler.sh add \
   --id missing-tool \
