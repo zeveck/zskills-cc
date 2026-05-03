@@ -20,12 +20,18 @@ SPECIAL_SKILL_SOURCES = {
     "playwright-cli": Path(".claude/skills/playwright-cli"),
 }
 
-SUPPORT_SCRIPTS = [
+COMMON_SUPPORT_SCRIPTS = [
     Path("scripts/zskills-config.sh"),
     Path("scripts/zskills-preflight.sh"),
     Path("scripts/zskills-scheduler.sh"),
     Path("scripts/zskills-run-due.sh"),
     Path("scripts/zskills-install.sh"),
+]
+
+CODEX_SUPPORT_SCRIPTS = [
+    Path("scripts/zskills-runner.sh"),
+    Path("scripts/zskills-gate.sh"),
+    Path("scripts/zskills-post-run-invariants.sh"),
 ]
 
 CODEX_ROOT_FILES = [
@@ -95,6 +101,194 @@ def apply_patch_file(skill_dir: Path, patch_file: Path) -> None:
     )
 
 
+def postprocess_codex_skill(skill_dir: Path, name: str) -> None:
+    if name == "run-plan":
+        path = skill_dir / "SKILL.md"
+        text = path.read_text()
+        old_finish = (
+            '  Without `auto`: pauses BETWEEN phases to show results and ask "continue\n'
+            '  to next phase?" With `auto`: each phase runs as its own cron-fired\n'
+            '  top-level turn (~5 min between phases via one-shot crons scheduled by\n'
+            '  Phase 5c). The first phase runs immediately; each subsequent phase is\n'
+            '  scheduled after the prior phase lands. Preserves fresh context per\n'
+            '  phase \\u2014 no late-phase fatigue.\n'
+            '  Each phase still gets full verification, testing, and all safety rails.\n'
+            '  If any phase fails verification or hits a conflict, stops there.\n'
+            '  **`finish` and `every` are mutually exclusive.** `finish auto` schedules\n'
+            '  its own ~5-min one-shot crons internally. `every N` schedules a recurring\n'
+            '  cron at user-set cadence. Combining them would produce two overlapping\n'
+            '  cron schedules. Use one or the other.'
+        ).encode().decode("unicode_escape")
+        new_finish = (
+            '  Without `auto`: pauses BETWEEN phases to show results and ask "continue\n'
+            '  to next phase?" With `auto`: a foreground parent runner remains attached\n'
+            '  to the initiating REPL and launches one fresh `codex exec` child chunk\n'
+            '  per phase. The first phase runs immediately; each subsequent phase is\n'
+            '  started by the parent runner after durable plan/report/tracking\n'
+            '  validation. This preserves fresh context per phase without losing\n'
+            '  visible feedback.\n'
+            '  Each phase still gets full verification, testing, and all safety rails.\n'
+            '  If any phase fails verification or hits a conflict, stops there.\n'
+            '  **`finish` and `every` are mutually exclusive.** In Codex, `finish auto`\n'
+            '  uses the foreground runner. `every N` schedules a recurring cron at\n'
+            '  user-set cadence. Combining them would produce overlapping autonomous\n'
+            '  workflows. Use one or the other.'
+        )
+        text = text.replace(old_finish, new_finish)
+        text = text.replace(
+            "- `/run-plan plans/FEATURE_PLAN.md finish auto` \u2014 autonomous, all remaining phases (chunked, one phase per cron turn)",
+            "- `/run-plan plans/FEATURE_PLAN.md finish auto` \u2014 autonomous, all remaining phases (foreground runner, fresh child chunk per phase)",
+        )
+        text = text.replace("scripts/post-run-invariants.sh", "scripts/zskills-post-run-invariants.sh")
+        text = text.replace("`post-run-invariants.sh`", "`zskills-post-run-invariants.sh`")
+        text = text.replace(" post-run-invariants.sh", " zskills-post-run-invariants.sh")
+        text = text.replace(
+            "0. **Idempotent re-entry check (chunked finish auto only).** If running\n"
+            "   with `finish auto`, this turn may have been triggered by a cron from\n"
+            "   a previous turn. Re-emit the pipeline ID first (cron-fired turns are\n"
+            "   fresh sessions):",
+            "0. **Idempotent re-entry check (chunked finish auto only).** If running\n"
+            "   with `finish auto`, this turn may be a foreground-runner child chunk.\n"
+            "   Re-emit the pipeline ID first so tracking stays tied to the parent\n"
+            "   runner:",
+        )
+        text = text.replace(
+            '   TRACKING_ID=$(basename "$PLAN_FILE" .md | tr \'[:upper:]_\' \'[:lower:]-\')\n'
+            '   echo "ZSKILLS_PIPELINE_ID=run-plan.$TRACKING_ID"',
+            '   TRACKING_ID="${ZSKILLS_TRACKING_ID:-$(basename "$PLAN_FILE" .md | tr \'[:upper:]_\' \'[:lower:]-\')}"\n'
+            '   PIPELINE_ID="${ZSKILLS_PIPELINE_ID:-run-plan.$TRACKING_ID}"\n'
+            '   echo "ZSKILLS_PIPELINE_ID=$PIPELINE_ID"',
+        )
+        text = text.replace(
+            '     echo "ZSKILLS_PIPELINE_ID=run-plan.$TRACKING_ID"',
+            '     PIPELINE_ID="${ZSKILLS_PIPELINE_ID:-run-plan.$TRACKING_ID}"\n'
+            '     echo "ZSKILLS_PIPELINE_ID=$PIPELINE_ID"',
+        )
+        text = text.replace(
+            '     printf \'%s\\n\' "run-plan.$TRACKING_ID" > "<worktree-path>/.zskills-tracked"',
+            '     printf \'%s\\n\' "${ZSKILLS_PIPELINE_ID:-run-plan.$TRACKING_ID}" > "<worktree-path>/.zskills-tracked"',
+        )
+        text = text.replace(
+            "     Where `$TRACKING_ID` is the plan slug (e.g., `thermal-domain`). This file associates the worktree agent with this pipeline for hook enforcement.",
+            "     Where `$TRACKING_ID` is the runner-provided id when present, otherwise the plan slug. This file associates the worktree agent with this pipeline for hook enforcement.",
+        )
+        final_verify_start = "   On attempt 1, schedule the verify cron (~5 min from now)."
+        final_verify_end = '   - `prompt`: `"Run /run-plan <plan-file> finish auto"`\n'
+        if final_verify_start in text and final_verify_end in text:
+            before, rest = text.split(final_verify_start, 1)
+            _, after = rest.split(final_verify_end, 1)
+            text = before + (
+                "   In Codex foreground-runner mode, do not schedule verify or re-entry\n"
+                "   one-shots with Claude CronCreate. Keep this phase in the visible\n"
+                "   runner flow: dispatch `/verify-changes branch tracking-id=$TRACKING_ID`,\n"
+                "   wait for its result, write the final verification marker, and let the\n"
+                "   parent runner validate before launching any next child chunk.\n"
+            ) + after
+        start = "## Phase 5c \\u2014 Chunked finish auto transition (CRITICAL for finish auto mode)".encode().decode("unicode_escape")
+        end = "\n## Phase 6 \\u2014 Land".encode().decode("unicode_escape")
+        if start in text and end in text:
+            before, rest = text.split(start, 1)
+            _, after = rest.split(end, 1)
+            replacement = """## Phase 5c - Codex foreground finish-auto transition
+
+**This section applies when running `/run-plan <plan> finish auto` in Codex.**
+
+Codex does not use the Claude CronCreate flow for `finish auto`. The
+foreground parent `zskills-runner.sh` owns chunking, starts a fresh
+`codex exec` child for each phase, streams child output back to the initiating
+REPL, and validates durable plan/report/tracking evidence between chunks.
+
+When a prompt contains `RUNNER-MANAGED CHUNK`, execute exactly one incomplete
+phase and stop. Do not invoke `zskills-runner.sh`, do not create one-shot cron
+jobs, and do not loop into the next phase. If another phase remains, write the
+handoff marker required by the runner. If the plan is complete, write the final
+land and fulfillment markers required by the runner.
+
+If the foreground runner helper is unavailable, run at most one phase and
+report the exact next `run-plan <plan> finish auto` command. Do not claim
+autonomous completion.
+"""
+            text = before + replacement + end + after
+        invariant_start = "### Post-run invariants check (mandatory"
+        invariant_end = "\n## Failure Protocol"
+        if invariant_start in text and invariant_end in text:
+            before, rest = text.split(invariant_start, 1)
+            _, after = rest.split(invariant_end, 1)
+            replacement = """### Post-run invariants check (mandatory - mechanical gate)
+
+For Codex `finish auto`, the foreground parent runner invokes
+`scripts/zskills-post-run-invariants.sh` after final plan completion. Child
+chunks do not call this helper directly; they write durable plan/report/tracking
+evidence and then stop so the parent can validate the final state.
+
+The helper name and argument contract are:
+
+```bash
+bash scripts/zskills-post-run-invariants.sh \\
+  --repo "$ACTIVE_ARTIFACT_ROOT" \\
+  --plan-file "$PLAN_FILE" \\
+  --report "$REPORT_PATH" \\
+  --final
+```
+
+Non-zero exit from the script means one or more invariants failed. When that
+happens: STOP. Do not advance to another phase. Report the specific failures to
+the user; they need to investigate and fix before another run.
+"""
+            text = before + replacement + invariant_end + after
+        path.write_text(text)
+    elif name == "research-and-go":
+        path = skill_dir / "SKILL.md"
+        text = path.read_text()
+        text = text.replace(
+            "This executes all implementation phases sequentially -- each delegating\n"
+            "to `/run-plan` on the corresponding sub-plan via chunked cron-fired turns.\n"
+            "Full verification, testing, and landing at each phase.",
+            "This executes all implementation phases sequentially through Codex's\n"
+            "foreground `/run-plan finish auto` runner. Each phase still runs in a\n"
+            "fresh child Codex context, with full verification, testing, and landing.",
+        )
+        text = text.replace(
+            "The pipeline will end with a top-level `/verify-changes branch` invocation\n"
+            "that runs as a cron-fired turn after the meta-plan execution completes.",
+            "The pipeline will end with a top-level `/verify-changes branch` invocation\n"
+            "coordinated by the foreground `/run-plan finish auto` runner after the\n"
+            "meta-plan execution completes.",
+        )
+        start = "## Step 3 \\u2014 Final cross-branch verification (scheduled by /run-plan, not here)".encode().decode("unicode_escape")
+        end = "\n## Key Rules"
+        if start in text and end in text:
+            before, rest = text.split(start, 1)
+            _, after = rest.split(end, 1)
+            replacement = """## Step 3 - Final cross-branch verification
+
+The Codex foreground `/run-plan finish auto` runner is responsible for final
+cross-branch verification as part of its visible orchestration. Do not schedule
+background cron jobs from `/research-and-go`.
+
+### Pipeline Cleanup
+
+Under foreground finish-auto, `/research-and-go` hands execution to
+`/run-plan` and remains visible through that runner's output. Tracking cleanup
+is still explicit: run `bash scripts/clear-tracking.sh` only after the user has
+confirmed the pipeline finished. Do NOT auto-wipe tracking records.
+
+**Codex preflight:** before running `bash scripts/clear-tracking.sh`, run the
+shared procedural preflight helper and treat failure as a blocker:
+
+```bash
+ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
+[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] || ZSKILLS_PREFLIGHT_HELPER="$HOME/.codex/skills/scripts/zskills-preflight.sh"
+[ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation clear-tracking --client codex
+```
+
+If the pipeline failed at any point, tracking is preserved for inspection and
+re-run. See Step 0 Re-run Handling for the resume protocol.
+"""
+            text = before + replacement + end + after
+        path.write_text(text)
+
+
 def load_manifest(path: Path) -> dict:
     if not path.exists():
         return {"overlays": []}
@@ -157,12 +351,16 @@ def generate(args: argparse.Namespace) -> int:
                 raise RuntimeError(f"overlay checksum mismatch for {patch}")
             apply_patch_file(dst, patch)
         if args.client == "codex":
+            postprocess_codex_skill(dst, name)
             insert_adapter(dst / "SKILL.md", adapter)
         installed.append({"name": name, "sha256": sha256_file(dst / "SKILL.md")})
 
     support_scripts: list[dict] = []
     scripts_output = output / "scripts"
-    for rel in SUPPORT_SCRIPTS:
+    support_script_paths = list(COMMON_SUPPORT_SCRIPTS)
+    if args.client == "codex":
+        support_script_paths.extend(CODEX_SUPPORT_SCRIPTS)
+    for rel in support_script_paths:
         src = Path.cwd() / rel
         if not src.exists():
             continue

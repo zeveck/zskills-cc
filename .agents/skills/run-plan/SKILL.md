@@ -25,11 +25,11 @@ Tracking: tracking files belong under the main repository root at `.zskills/trac
 
 Landing modes: preserve `direct`, `cherry-pick`, and `pr`. Explicit `direct`, `pr`, or `cherry-pick` arguments win and should be stripped before downstream phase parsing. Otherwise read `.codex/zskills-config.json`, then `.claude/zskills-config.json`, then fall back to `cherry-pick`. If both config files exist and disagree on landing or main protection, stop before landing and report the conflict. `locked-main-pr` remains the preset name for PR mode with main protection.
 
-Scheduler bridge: Claude cron tools (`CronList`, `CronCreate`, `CronDelete`) are unsupported unless the current Codex runtime exposes a scheduler. In Codex, prefer the project-local `scripts/zskills-scheduler.sh` and `scripts/zskills-run-due.sh`, then installed helpers under `$PROJECT_ROOT/.agents/skills/scripts/`, `$HOME/.agents/skills/scripts/`, or legacy `$HOME/.codex/skills/scripts/`. If helpers are unavailable, report scheduling as degraded and do not claim background execution. Before starting any `run-plan finish auto` phase or any recurring `every` workflow, run `zskills-scheduler.sh runner-status --repo-path "$PROJECT_ROOT"`; if no scheduled runner is enabled, run `zskills-scheduler.sh runner-enable --repo-path "$PROJECT_ROOT"` automatically and report that autonomous scheduling was enabled. If enabling fails, stop before doing work. For `run-plan finish auto`, after this preflight passes, run exactly one plan phase in the current top-level invocation; after updating the plan/report/tracking, if another phase remains, create a fresh one-shot schedule with `zskills-scheduler.sh add --one-shot` whose args omit a fixed phase number, then exit so the next `zskills-run-due.sh`/OS cron tick starts a fresh Codex turn. When a scheduled workflow is stopped, blocked, or complete, run `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"` so this repo's OS cron entry is removed when no active schedules remain.
+Foreground runner bridge: Claude cron tools (`CronList`, `CronCreate`, `CronDelete`) are not the Codex implementation for `run-plan finish auto`. In Codex, `finish auto` must use a visible foreground parent runner that stays attached to the initiating REPL and launches one fresh `codex exec` child chunk per phase. Prefer `scripts/zskills-runner.sh`, then `$PROJECT_ROOT/.agents/skills/scripts/zskills-runner.sh`, then `$HOME/.agents/skills/scripts/zskills-runner.sh`, then legacy `$HOME/.codex/skills/scripts/zskills-runner.sh`. If the runner is unavailable, execute at most one phase, write the normal report/tracking handoff, and do not claim autonomous completion. Child prompts containing `RUNNER-MANAGED CHUNK` must not invoke the runner again; they execute exactly one incomplete phase and stop after durable plan/report/tracking evidence.
 
 Hook fallback: Claude hooks are not enforced by Codex in this environment. Compensate with inline preflight checks before commits, cherry-picks, PR merge/auto-merge, worktree deletion, or tracking cleanup: inspect status, protect unrelated changes, verify branch/mode, and preserve `.zskills/tracking`.
 
-Helper scripts: generated Codex installs include shared helpers under `.agents/skills/scripts/` for project installs or `$HOME/.agents/skills/scripts/` for user installs. Prefer project-local helpers at `$PROJECT_ROOT/scripts/` when present, otherwise use the installed helper path, with `$HOME/.codex/skills/scripts/` as a legacy fallback. If neither helper is available, use the explicit fallback instructions in the skill and report the degraded procedural path.
+Helper scripts: generated Codex installs include shared helpers under `.agents/skills/scripts/` for project installs or `$HOME/.agents/skills/scripts/` for user installs. Prefer project-local helpers at `$PROJECT_ROOT/scripts/` when present, otherwise use the installed helper path, with `$HOME/.codex/skills/scripts/` as a legacy fallback. `zskills-runner.sh`, `zskills-gate.sh`, and `zskills-post-run-invariants.sh` are Codex foreground-runner helpers. If a required helper is unavailable, use the explicit fallback instructions in the skill and report the degraded procedural path.
 
 See `~/.codex/skills/ZSKILLS_CODEX_INTEGRATION.md` for the shared adapter contract.
 <!-- ZSKILLS_CODEX_COMPAT_END -->
@@ -58,17 +58,18 @@ through multi-phase plans autonomously.
   plan is complete. `finish` is approval to START — do not ask for
   confirmation before the first phase (the user already said "finish").
   Without `auto`: pauses BETWEEN phases to show results and ask "continue
-  to next phase?" With `auto`: each phase runs as its own cron-fired
-  top-level turn (~5 min between phases via one-shot crons scheduled by
-  Phase 5c). The first phase runs immediately; each subsequent phase is
-  scheduled after the prior phase lands. Preserves fresh context per
-  phase — no late-phase fatigue.
+  to next phase?" With `auto`: a foreground parent runner remains attached
+  to the initiating REPL and launches one fresh `codex exec` child chunk
+  per phase. The first phase runs immediately; each subsequent phase is
+  started by the parent runner after durable plan/report/tracking
+  validation. This preserves fresh context per phase without losing
+  visible feedback.
   Each phase still gets full verification, testing, and all safety rails.
   If any phase fails verification or hits a conflict, stops there.
-  **`finish` and `every` are mutually exclusive.** `finish auto` schedules
-  its own ~5-min one-shot crons internally. `every N` schedules a recurring
-  cron at user-set cadence. Combining them would produce two overlapping
-  cron schedules. Use one or the other.
+  **`finish` and `every` are mutually exclusive.** In Codex, `finish auto`
+  uses the foreground runner. `every N` schedules a recurring cron at
+  user-set cadence. Combining them would produce overlapping autonomous
+  workflows. Use one or the other.
 - **auto** (optional) — bypass approval gates, auto-land to main via cherry-pick
 - **every SCHEDULE** (optional) — self-schedule recurring runs via cron:
   - Accepts intervals: `4h`, `2h`, `30m`, `12h`
@@ -181,30 +182,35 @@ else
 fi
 ```
 
-**Codex scheduler implementation:** In Codex, use the file-backed scheduler when available. Prefer the project helper, then the generated installed helper:
+**Codex foreground runner implementation:** In Codex, plain `finish auto`
+uses a visible foreground runner, not OS cron. The parent runner remains
+attached to the initiating REPL, streams orchestration and child output, and
+launches one fresh `codex exec` child chunk per phase:
 
 ```bash
-ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
-[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
-ZSKILLS_RUN_DUE_HELPER="$PROJECT_ROOT/scripts/zskills-run-due.sh"
-[ -x "$ZSKILLS_RUN_DUE_HELPER" ] || ZSKILLS_RUN_DUE_HELPER="$HOME/.codex/skills/scripts/zskills-run-due.sh"
+ZSKILLS_RUNNER_HELPER="$PROJECT_ROOT/scripts/zskills-runner.sh"
+[ -x "$ZSKILLS_RUNNER_HELPER" ] || ZSKILLS_RUNNER_HELPER="$PROJECT_ROOT/.agents/skills/scripts/zskills-runner.sh"
+[ -x "$ZSKILLS_RUNNER_HELPER" ] || ZSKILLS_RUNNER_HELPER="$HOME/.agents/skills/scripts/zskills-runner.sh"
+[ -x "$ZSKILLS_RUNNER_HELPER" ] || ZSKILLS_RUNNER_HELPER="$HOME/.codex/skills/scripts/zskills-runner.sh"
 ```
 
-If `$ZSKILLS_SCHEDULER_HELPER` is executable:
+If `$ARGUMENTS` contains `finish auto`, the prompt is not already marked
+`RUNNER-MANAGED CHUNK`, and `$ZSKILLS_RUNNER_HELPER` is executable, delegate
+the whole auto run to:
 
-- Before starting any `finish auto` phase or registering any `every <SCHEDULE>`
-  job, run `"$ZSKILLS_SCHEDULER_HELPER" runner-status --repo-path "$PROJECT_ROOT"`.
-  If it fails because no runner is enabled or the runner is stale, run
-  `"$ZSKILLS_SCHEDULER_HELPER" runner-enable --repo-path "$PROJECT_ROOT"`
-  automatically and report that autonomous scheduling was enabled. If enabling
-  fails, stop before doing phase work or creating schedule files.
-- `every <SCHEDULE>` stores a schedule file with `zskills-scheduler.sh add --skill run-plan --args "<plan-file and flags without every/now>" --schedule "<SCHEDULE>" --client codex --runner-command "${ZSKILLS_RUNNER_COMMAND:-codex exec --sandbox danger-full-access}"`. Do not include a fixed phase number unless the user explicitly asked for one.
-- `next` runs `zskills-scheduler.sh next --skill run-plan`.
-- `stop` runs `zskills-scheduler.sh stop --skill run-plan`, then `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"`.
-- standalone `now` runs `zskills-scheduler.sh trigger --skill run-plan` followed by `zskills-run-due.sh`.
-- After final completion or an unrecoverable blocked state, run `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"` so this repo's cron entry is removed when no active schedules remain.
+```bash
+RUNNER_PLAN_FILE="${PLAN_FILE:-}"
+if [ -z "$RUNNER_PLAN_FILE" ]; then
+  RUNNER_PLAN_FILE=$(printf '%s\n' "$ARGUMENTS" | awk '{for (i=1; i<=NF; i++) if ($i!="finish" && $i!="auto" && $i!="direct" && $i!="cherry-pick" && $i!="pr") {print $i; exit}}')
+fi
+"$ZSKILLS_RUNNER_HELPER" run-plan "$RUNNER_PLAN_FILE" finish auto "$LANDING_MODE" --repo "$PROJECT_ROOT"
+```
 
-If the helper is unavailable, report unsupported and exit without claiming background execution. OS cron can drive due jobs through the managed runner enabled by `zskills-scheduler.sh runner-enable`.
+Then return the runner's exit status without running a phase inline. If the
+runner helper is unavailable, execute at most one phase, write the normal
+report/tracking handoff, and do not claim autonomous completion. If the prompt
+contains `RUNNER-MANAGED CHUNK`, do not invoke the runner again; execute exactly
+one incomplete phase and stop after plan/report/tracking evidence.
 
 **Validation:**
 
@@ -282,7 +288,7 @@ Examples:
 - `/run-plan plans/FEATURE_PLAN.md` — interactive, next phase
 - `/run-plan plans/FEATURE_PLAN.md 4b` — interactive, specific phase
 - `/run-plan plans/FEATURE_PLAN.md finish` — interactive, all remaining phases (pauses between each)
-- `/run-plan plans/FEATURE_PLAN.md finish auto` — autonomous, all remaining phases (chunked, one phase per cron turn)
+- `/run-plan plans/FEATURE_PLAN.md finish auto` — autonomous, all remaining phases (foreground runner, fresh child chunk per phase)
 - `/run-plan plans/FEATURE_PLAN.md auto every 4h` — schedule every 4h
 - `/run-plan plans/FEATURE_PLAN.md auto every 4h now` — schedule + run now
 - `/run-plan plans/FEATURE_PLAN.md finish auto pr` — autonomous, all phases, PR landing
@@ -433,12 +439,13 @@ comprehension rather than rigid parsing.
 Before parsing, check for stale state from a previous failed run:
 
 0. **Idempotent re-entry check (chunked finish auto only).** If running
-   with `finish auto`, this turn may have been triggered by a cron from
-   a previous turn. Re-emit the pipeline ID first (cron-fired turns are
-   fresh sessions):
+   with `finish auto`, this turn may be a foreground-runner child chunk.
+   Re-emit the pipeline ID first so tracking stays tied to the parent
+   runner:
    ```bash
-   TRACKING_ID=$(basename "$PLAN_FILE" .md | tr '[:upper:]_' '[:lower:]-')
-   echo "ZSKILLS_PIPELINE_ID=run-plan.$TRACKING_ID"
+   TRACKING_ID="${ZSKILLS_TRACKING_ID:-$(basename "$PLAN_FILE" .md | tr '[:upper:]_' '[:lower:]-')}"
+   PIPELINE_ID="${ZSKILLS_PIPELINE_ID:-run-plan.$TRACKING_ID}"
+   echo "ZSKILLS_PIPELINE_ID=$PIPELINE_ID"
    ```
 
    Then read the plan frontmatter (`status` field) and the plan tracker
@@ -736,7 +743,7 @@ agent hasn't returned after 2 hours, declare it **failed**:
    # local main as-is with a warning.
    git fetch origin main 2>/dev/null || echo "WARNING: git fetch origin main failed — worktree will use cached origin/main (may be stale)"
    git merge --ff-only origin/main 2>/dev/null || echo "WARNING: local main not fast-forwarded (may be divergent) — worktree uses local main as-is"
-   FEATURE_BRANCH="cp-${PLAN_SLUG}-${PHASE}"  # unified across modes — used by post-run-invariants.sh
+   FEATURE_BRANCH="cp-${PLAN_SLUG}-${PHASE}"  # unified across modes — used by zskills-post-run-invariants.sh
    if [ -d "$WORKTREE_PATH" ]; then
      echo "Resuming existing worktree at $WORKTREE_PATH"
    else
@@ -839,16 +846,17 @@ agent hasn't returned after 2 hours, declare it **failed**:
    - The implementation agent does NOT commit. The verification agent runs the full test suite and commits if verification passes. This ensures the hook's test gate is satisfied (the committing agent's transcript contains the test command).
    - **Declare pipeline ID** early in execution (before any git operation):
      ```bash
-     echo "ZSKILLS_PIPELINE_ID=run-plan.$TRACKING_ID"
+     PIPELINE_ID="${ZSKILLS_PIPELINE_ID:-run-plan.$TRACKING_ID}"
+     echo "ZSKILLS_PIPELINE_ID=$PIPELINE_ID"
      ```
      This echo is read by the tracking hook from the session transcript to
      scope marker checks to this pipeline. Uses last-match so re-invocations
      in the same session work correctly.
    - **Before dispatching any worktree agent**, write `.zskills-tracked` in the worktree:
      ```bash
-     printf '%s\n' "run-plan.$TRACKING_ID" > "<worktree-path>/.zskills-tracked"
+     printf '%s\n' "${ZSKILLS_PIPELINE_ID:-run-plan.$TRACKING_ID}" > "<worktree-path>/.zskills-tracked"
      ```
-     Where `$TRACKING_ID` is the plan slug (e.g., `thermal-domain`). This file associates the worktree agent with this pipeline for hook enforcement.
+     Where `$TRACKING_ID` is the runner-provided id when present, otherwise the plan slug. This file associates the worktree agent with this pipeline for hook enforcement.
    - **Rebase onto current main before final commit:**
      ```bash
      git fetch origin main && git rebase origin/main
@@ -921,7 +929,7 @@ PLAN_FILE="plans/THERMAL_DOMAIN.md"
 PLAN_SLUG=$(basename "$PLAN_FILE" .md | tr '[:upper:]' '[:lower:]' | tr '_' '-')
 
 BRANCH_NAME="${BRANCH_PREFIX}${PLAN_SLUG}"
-FEATURE_BRANCH="$BRANCH_NAME"  # unified across modes — used by post-run-invariants.sh
+FEATURE_BRANCH="$BRANCH_NAME"  # unified across modes — used by zskills-post-run-invariants.sh
 PROJECT_NAME=$(basename "$PROJECT_ROOT")
 WORKTREE_PATH="/tmp/${PROJECT_NAME}-pr-${PLAN_SLUG}"
 ```
@@ -1373,43 +1381,11 @@ Three branches:
    esac
    ```
 
-   On attempt 1, schedule the verify cron (~5 min from now). TZ note: the
-   `date +%M` calls below use SYSTEM-local TZ, which is what CronCreate
-   expects. Do NOT override with `TZ=America/New_York` — see the warning
-   in "How to schedule the next cron" below for why this breaks the cron.
-   Margin note: +5 (not +1) gives the scheduler enough slack that
-   sub-minute timing jitter doesn't push a pinned-date one-shot past its
-   fire window. See "How to schedule the next cron" below for the
-   pinned-date / miss-by-365-days failure mode.
-   ```bash
-   NOW_MIN=$(date +%M); NOW_HOUR=$(date +%H)
-   NOW_DAY=$(date +%d); NOW_MONTH=$(date +%m)
-   TARGET_MIN=$(( (10#$NOW_MIN + 5) % 60 ))
-   if [ "$TARGET_MIN" -eq 0 ] || [ "$TARGET_MIN" -eq 30 ]; then
-     TARGET_MIN=$(( TARGET_MIN + 1 ))
-   fi
-   TARGET_HOUR=$NOW_HOUR
-   if [ "$TARGET_MIN" -lt "$NOW_MIN" ]; then
-     TARGET_HOUR=$(( (10#$NOW_HOUR + 1) % 24 ))
-   fi
-   ```
-   Then call `CronCreate` with:
-   - `cron`: `"$TARGET_MIN $TARGET_HOUR $NOW_DAY $NOW_MONTH *"`
-   - `recurring`: false
-   - `prompt`: `"Run /verify-changes branch tracking-id=$TRACKING_ID"`
-
-   On every attempt, schedule re-entry cron (`<backoff>` from now):
-   ```bash
-   REENTRY_MIN=$(( (10#$NOW_MIN + BACKOFF_MIN) % 60 ))
-   REENTRY_HOUR=$NOW_HOUR
-   if [ "$REENTRY_MIN" -lt "$NOW_MIN" ]; then
-     REENTRY_HOUR=$(( (10#$NOW_HOUR + 1) % 24 ))
-   fi
-   ```
-   Then call `CronCreate` with:
-   - `cron`: `"$REENTRY_MIN $REENTRY_HOUR $NOW_DAY $NOW_MONTH *"`
-   - `recurring`: false
-   - `prompt`: `"Run /run-plan <plan-file> finish auto"`
+   In Codex foreground-runner mode, do not schedule verify or re-entry
+   one-shots with Claude CronCreate. Keep this phase in the visible
+   runner flow: dispatch `/verify-changes branch tracking-id=$TRACKING_ID`,
+   wait for its result, write the final verification marker, and let the
+   parent runner validate before launching any next child chunk.
 
    Then exit this turn.
 
@@ -1534,165 +1510,24 @@ fi
 Threshold `10` is a judgment call — below that the accumulation is not
 yet disruptive. Adjust if it proves noisy or too quiet in practice.
 
-## Phase 5c — Chunked finish auto transition (CRITICAL for finish auto mode)
+## Phase 5c - Codex foreground finish-auto transition
 
-**This section applies when running `/run-plan <plan> finish auto`.**
+**This section applies when running `/run-plan <plan> finish auto` in Codex.**
 
-**Codex scheduler implementation:** If `zskills-scheduler.sh` and `zskills-run-due.sh` are available, `finish auto` may schedule the next top-level turn by storing a one-shot due job (`zskills-scheduler.sh add --one-shot`) whose args omit a fixed phase number, then relying on `run-plan` to re-read the plan and choose the next incomplete phase. Before starting the current phase, Codex must run `zskills-scheduler.sh runner-status --repo-path "$PROJECT_ROOT"`; if no scheduled runner is enabled or the runner is stale, run `zskills-scheduler.sh runner-enable --repo-path "$PROJECT_ROOT"` automatically and report that autonomous scheduling was enabled. If enabling fails, stop immediately before doing phase work and do not create schedule files. If no file-backed scheduler is available, do not execute the CronCreate steps in this section. Run the next phase sequentially in the current session or pause and report the next explicit command. Do not claim a one-shot cron was created. This Codex override takes precedence over the detailed Claude CronCreate steps below until scheduler emulation is enabled.
+Codex does not use the Claude CronCreate flow for `finish auto`. The
+foreground parent `zskills-runner.sh` owns chunking, starts a fresh
+`codex exec` child for each phase, streams child output back to the initiating
+REPL, and validates durable plan/report/tracking evidence between chunks.
 
-In chunked finish auto mode, each plan phase runs as a separate top-level
-cron-fired turn. The current turn does NOT loop back to process the next
-phase — instead, it lands the current phase, schedules a one-shot cron for
-the next phase (or the next meta-plan phase, or the final cross-branch
-verification, depending on context), and exits cleanly.
+When a prompt contains `RUNNER-MANAGED CHUNK`, execute exactly one incomplete
+phase and stop. Do not invoke `zskills-runner.sh`, do not create one-shot cron
+jobs, and do not loop into the next phase. If another phase remains, write the
+handoff marker required by the runner. If the plan is complete, write the final
+land and fulfillment markers required by the runner.
 
-### Why chunked execution
-
-The original failure mode was: a single long-running session built up
-late-phase fatigue and rationalized skipping verification on the last few
-phases. Chunked execution breaks the run into a sequence of fresh
-top-level turns, each handling exactly one plan phase. Each fresh turn
-re-reads the plan, the tracking state, and its own instructions. There
-is no momentum to skip steps because each turn starts clean.
-
-A secondary benefit: cron-fired turns run at top level (in the user's
-main session, with full `Agent`/`Task` tool access). This means
-implementation, verification, and reporting subagent dispatches all work
-correctly. Sub-sub-agent dispatch is not needed because there is no
-nesting — every cron fire is a fresh top-level turn.
-
-### Idempotent re-entry (every cron-fired turn does this first)
-
-Cross-reference: Step 0 in Phase 1 preflight. At the very start of every
-`/run-plan` invocation in `finish auto` mode, read the plan tracker and
-check the next-target phase. If it's already marked Done OR In Progress,
-**exit cleanly** with a "no work to do" message. This handles two cases:
-
-1. A stale cron from a previous run fires after the user manually
-   re-invoked the next phase. The cron sees the work is already done
-   and exits without duplication.
-2. A previous turn already started this phase (e.g., is mid-cherry-pick).
-   The new turn defers and exits.
-
-Output for the no-work-to-do case:
-> /run-plan plans/X.md: phase N is already Done/In Progress. Skipping
-> this cron fire (likely a stale cron). The pipeline is still proceeding
-> via its actual current phase.
-
-### When this turn schedules the next cron
-
-After Phase 6 (land) succeeds for the current phase AND
-`scripts/post-run-invariants.sh` passes:
-
-> **`post-run-invariants.sh` ordering**: Phase 5c's next-phase cron
-> schedule runs AFTER `post-run-invariants.sh` passes. If invariants
-> fail, do NOT schedule the next cron; invoke Failure Protocol.
-
-1. **NEXT incomplete phase exists in this plan**: schedule a one-shot cron
-   (`recurring: false`) for `/run-plan <plan-file> finish auto` ~5 min
-   from now. The next cron-fired turn will pick up the next phase. Then
-   exit this turn.
-
-2. **This plan is a sub-plan delegate** (detected via `tracking-index=N`
-   arg from research-and-go Step 1b — see `skills/research-and-go/SKILL.md:135`):
-   after the last phase of this sub-plan lands, recover the meta-plan path
-   from `requires.run-plan.N` marker content (or
-   `pipeline.research-and-go.*` sentinel — see Step 1b). Schedule a
-   one-shot cron for `/run-plan <META_PLAN_PATH> finish auto` ~5 min
-   from now. The next cron-fired turn will resume the meta-plan from its
-   next incomplete delegate phase. Then exit.
-
-3. **All phases done (meta or standalone)**: do NOT schedule a next-phase
-   cron. Phase 5b has already run (or will run on the next `/run-plan`
-   invocation/re-entry — see Phase 1 step 3 amendment). Exit cleanly. The
-   final-verify gate lives in Phase 5b's first sub-step (see Phase 5b
-   0b. Final-verify gate); Phase 5c does not handle final-verify directly.
-
-### PR-mode branching for next-phase cron
-
-Do NOT poll `gh pr view --json state` inside the cron turn. Instead,
-Phase 5c reads the just-written `.landed` status file (written at landing
-time):
-
-- `status: landed` → schedule next-phase cron, exit.
-- `status: pr-ready` or `pr-ci-failing` → schedule a SHORT re-entry cron
-  (~5 min) whose prompt re-fires `/run-plan <plan> finish auto`. Step 0's
-  idempotent check will see the current phase is still In Progress and
-  re-attempt the PR-state poll via Phase 6.
-- `status: conflict` or `pr-failed` → invoke Failure Protocol. Do not
-  schedule next cron.
-- In cherry-pick / direct mode, the land event is synchronous (`.landed`
-  written immediately) and next-phase cron schedules directly.
-
-### User Verify items in chunked mode
-
-In chunked mode, landing happens per-phase. If the just-landed phase has
-User Verify items, schedule the next-phase cron AND output the User Verify
-items in this turn's completion message. Per-phase landing IS the chunked
-model — do NOT hold landing until all phases complete.
-
-### How to schedule the next cron
-
-```bash
-# Compute target minute: +5 from now, avoiding :00 and :30 marks.
-# CRITICAL: `date +%M` uses SYSTEM-local TZ, and CronCreate reads the cron
-# expression in SYSTEM-local TZ. Do NOT "fix" these to `TZ=America/New_York
-# date +%M` — that encodes ET into the expression while CronCreate expects
-# system-local, producing a cron pinned to a date/time that's already
-# passed (next fire ~365 days out). The user-facing message uses ET for
-# readability; the cron expression itself MUST stay system-local.
-#
-# WHY +5 (not +1): one-shot crons pin day-of-month + month. If scheduler
-# jitter (sub-minute clock drift, TZ-conversion rounding, tick skew) makes
-# the fire window appear "already passed" at evaluation time, the next
-# matching slot is day-of-month+month NEXT YEAR — the cron sits in
-# CronList forever but won't fire this session. 1-minute margin is
-# borderline; 5 minutes is comfortable slack. Observed in the wild: a
-# chunked finish-auto pipeline's 5th consecutive +1 cron missed its
-# window and stalled the entire run.
-NOW_MIN=$(date +%M)
-NOW_HOUR=$(date +%H)
-NOW_DAY=$(date +%d)
-NOW_MONTH=$(date +%m)
-TARGET_MIN=$(( (10#$NOW_MIN + 5) % 60 ))
-if [ "$TARGET_MIN" -eq 0 ] || [ "$TARGET_MIN" -eq 30 ]; then
-  TARGET_MIN=$(( TARGET_MIN + 1 ))
-fi
-TARGET_HOUR=$NOW_HOUR
-if [ "$TARGET_MIN" -lt "$NOW_MIN" ]; then
-  TARGET_HOUR=$(( (10#$NOW_HOUR + 1) % 24 ))
-fi
-```
-
-Then call `CronCreate`:
-- `cron`: `"$TARGET_MIN $TARGET_HOUR $NOW_DAY $NOW_MONTH *"`
-- `recurring`: false
-- `prompt`: the next-step prompt — typically `"Run /run-plan <plan-file> finish auto"`, or `"Run /run-plan <meta-plan-path> finish auto"`, or `"Run /verify-changes branch tracking-id=$TRACKING_ID"`
-
-After scheduling, output the chunking message:
-> Phase <N> of `<plan>` complete (commit `<hash>`).
-> Phase <N+1> will fire automatically in ~5 minutes (cron `<job-id>`).
-> To stop the pipeline: `/run-plan stop`
-> To check status: `/run-plan <plan> status`
-
-Then **exit this turn**. Do NOT do any other work. Do NOT loop back to
-process the next phase inline. The cron handles it.
-
-### Cron-scheduling rule (avoid confusion)
-
-**Only top-level orchestrators (this `/run-plan` running as a cron-fired
-top-level turn) call `CronCreate`.** Sub-agents (the implementer in the
-worktree, the verifier subagent dispatched by Phase 3) do NOT schedule
-crons. They do their work synchronously and return control to this top-
-level orchestrator. This ensures at most one pending chunking cron per
-pipeline at any time.
-
-### Single-phase mode (no chunking)
-
-When invoked WITHOUT `finish auto` (e.g., `/run-plan plans/X.md` or
-`/run-plan plans/X.md 4b`), do NOT chunk. Run the single specified phase
-to completion in this turn, then exit normally. Chunking is exclusively
-for `finish auto` mode.
+If the foreground runner helper is unavailable, run at most one phase and
+report the exact next `run-plan <plan> finish auto` command. Do not claim
+autonomous completion.
 
 ## Phase 6 — Land
 
@@ -2562,55 +2397,26 @@ for stage in implement verify report land; do
 done
 ```
 
-### Post-run invariants check (mandatory — mechanical gate)
+### Post-run invariants check (mandatory - mechanical gate)
 
-Before declaring the run complete, the orchestrator MUST invoke
-`scripts/post-run-invariants.sh` to assert end-state correctness. This
-catches silent failures in `land-phase.sh` (e.g., a branch delete that
-was accepted but didn't take effect) that would otherwise accumulate
-zombies across runs. The script is an enforced gate — NOT prose the
-orchestrator might "satisfy conceptually" and skip.
+For Codex `finish auto`, the foreground parent runner invokes
+`scripts/zskills-post-run-invariants.sh` after final plan completion. Child
+chunks do not call this helper directly; they write durable plan/report/tracking
+evidence and then stop so the parent can validate the final state.
 
-Invoke it with named args, unified across modes (cherry-pick and PR use
-the same `FEATURE_BRANCH` variable; direct mode passes empty for both
-worktree and branch):
+The helper name and argument contract are:
 
 ```bash
-# FEATURE_BRANCH unified across modes — both cherry-pick and PR set this
-# at worktree creation time (cherry-pick uses cp-${PLAN_SLUG}-${PHASE},
-# PR uses ${BRANCH_PREFIX}${PLAN_SLUG}).
-bash scripts/post-run-invariants.sh \
-  --worktree      "$WORKTREE_PATH" \
-  --branch        "$FEATURE_BRANCH" \
-  --landed-status "$LANDED_STATUS" \
-  --plan-slug     "$PLAN_SLUG" \
-  --plan-file     "$PLAN_FILE"
+bash scripts/zskills-post-run-invariants.sh \
+  --repo "$ACTIVE_ARTIFACT_ROOT" \
+  --plan-file "$PLAN_FILE" \
+  --report "$REPORT_PATH" \
+  --final
 ```
 
-The script asserts 7 invariants:
-1. Worktree directory gone from disk
-2. Worktree removed from git's worktree registry
-3. Local feature branch deleted (when `--landed-status landed`)
-4. Remote feature branch deleted (when `--landed-status landed`)
-5. Plan report exists at `reports/plan-<slug>.md`
-6. No 🟡 In Progress rows linger in the tracker
-7. Local main reconcilable with origin/main (WARN-level; user may have
-   legitimate unpushed local commits)
-
-Non-zero exit from the script means one or more invariants failed. When
-that happens: STOP. Do not self-reschedule the cron. Do not advance to
-the next phase. Report the specific failures to the user; they need to
-investigate and fix before another run.
-
-For direct mode (no worktree, no feature branch), pass empty strings
-for `--worktree` and `--branch`; the script skips those checks.
-
-**Unified FEATURE_BRANCH convention:** at worktree creation (Phase 2),
-both cherry-pick and PR modes export a single `FEATURE_BRANCH` variable
-that the invariants check reads. Cherry-pick sets it to the
-auto-generated `cp-${PLAN_SLUG}-${PHASE}`; PR mode sets it to
-`${BRANCH_PREFIX}${PLAN_SLUG}`. Do not use different variable names per
-mode — that's how invariant #3 silently skips in cherry-pick mode.
+Non-zero exit from the script means one or more invariants failed. When that
+happens: STOP. Do not advance to another phase. Report the specific failures to
+the user; they need to investigate and fix before another run.
 
 ## Failure Protocol
 

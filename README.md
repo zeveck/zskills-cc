@@ -48,7 +48,8 @@ regenerated as needed.
   - `.codex` / `.claude` config precedence
   - direct, cherry-pick, and PR landing mode validation
   - procedural preflight checks for operations normally protected by hooks
-  - file-backed schedules that can be driven by OS cron
+  - foreground `run-plan finish auto` chunking with fresh Codex child sessions
+  - file-backed schedules for explicit recurring workflows
   - cross-client installation
 - Drift checks against upstream ZSkills plus declared overlays.
 - Fidelity tests covering helper behavior, installation, generated output,
@@ -76,8 +77,9 @@ regenerated as needed.
 - Upstream ZSkills checkout at `~/.codex/zskills-portable`.
 - Python 3.12+.
 - `bash`, `git`, `patch`, and `rg`.
-- Codex CLI for Codex installation and scheduled Codex runs.
-- Optional: `cron` for unattended due-job execution.
+- Codex CLI for Codex installation and foreground runner child chunks.
+- Optional: `cron` only for explicit recurring due-job workflows, not
+  `run-plan finish auto`.
 
 The current verifier allows one documented local upstream patch:
 `clear-tracking-recursive`.
@@ -158,6 +160,7 @@ Useful focused checks:
 ```bash
 bash tests/test-zskills-helpers.sh
 bash tests/test-zskills-scheduler.sh
+bash tests/test-zskills-runner.sh
 bash tests/test-zskills-install.sh
 python scripts/verify-generated-zskills.py \
   --allow-local-upstream \
@@ -171,24 +174,41 @@ The full suite verifies:
 - no Codex adapter text in generated Claude skills
 - installed Codex skill shape
 - helper behavior
+- foreground runner behavior
 - scheduler behavior
 - cross-client install behavior
 - upstream ZSkills conformance tests
 - upstream tracking integration tests
-- multi-phase scheduled `run-plan finish auto` canary
+- multi-phase foreground `run-plan finish auto` canary
 
-## Cron-Backed Scheduling
+## Foreground Finish Auto
 
-Codex does not provide Claude-style in-session cron tools. This integration uses
-file-backed schedule state under `.zskills/schedules/` and a due runner:
+Codex `run-plan finish auto` uses a foreground parent runner:
 
 ```bash
-cd /path/to/repo && scripts/zskills-run-due.sh
+scripts/zskills-runner.sh run-plan plans/FEATURE.md finish auto --repo /path/to/repo
 ```
 
-Autonomous skills enable the managed OS cron runner for the repo when they
-need background handoff, and disable it again when no active schedules remain.
-The helper is still available for explicit inspection:
+The parent process stays attached to the initiating REPL, prints orchestration
+state, streams child output, and launches one fresh `codex exec` child per plan
+phase. This preserves the important Claude ZSkills feel: visible progress in
+the current conversation plus semi-fresh execution context for each phase.
+
+The runner validates durable progress between chunks:
+
+- plan/report changes
+- run-plan tracking markers
+- verify-changes tracking markers
+- handoff or final fulfillment markers
+- clean project artifacts outside ignored `.zskills` state
+
+Direct unattended mode is refused unless explicitly allowed with
+`--allow-direct-unattended` or `runner.allow_direct_unattended` in
+`.codex/zskills-config.json`.
+
+File-backed scheduling still exists for explicit recurring workflows such as
+`every` modes. It is not the `run-plan finish auto` path. To inspect explicit
+schedules:
 
 ```bash
 scripts/zskills-scheduler.sh runner-status --repo-path /path/to/repo
@@ -203,20 +223,11 @@ scripts/zskills-scheduler.sh runner-disable-if-idle --repo-path /path/to/repo
 scripts/zskills-scheduler.sh runner-disable --repo-path /path/to/repo
 ```
 
-`run-plan finish auto`, `research-and-go`, and recurring `every` workflows
-must confirm the scheduled runner before they start autonomous work. If it is
-not enabled, they should enable it automatically before executing a phase or
-writing a new schedule. If enabling fails, they stop before doing work.
-
 Feedback is file-based:
 
 - schedule state: `.zskills/schedules/*.json`
 - run logs: `.zskills/logs/<job-id>/<timestamp>.log`
 - plan reports: `reports/plan-*.md`
-
-The cron canary should verify that OS cron can drive `run-plan finish auto
-direct` across separate Codex turns, with one-shot handoff jobs and logs for
-each turn.
 
 ## Current Assurance
 
@@ -230,6 +241,8 @@ Verified:
   instructions
 - tracking filesystem rules are preserved and tested
 - file-backed scheduler helpers and managed cron runner install/status work
+- foreground `run-plan finish auto` streams child output and validates each
+  phase with fresh Codex child invocations
 
 Still worth canarying before relying on unattended production work:
 

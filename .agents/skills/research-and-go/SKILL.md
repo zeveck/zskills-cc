@@ -22,11 +22,11 @@ Tracking: tracking files belong under the main repository root at `.zskills/trac
 
 Landing modes: preserve `direct`, `cherry-pick`, and `pr`. Explicit `direct`, `pr`, or `cherry-pick` arguments win and should be stripped before downstream phase parsing. Otherwise read `.codex/zskills-config.json`, then `.claude/zskills-config.json`, then fall back to `cherry-pick`. If both config files exist and disagree on landing or main protection, stop before landing and report the conflict. `locked-main-pr` remains the preset name for PR mode with main protection.
 
-Scheduler bridge: Claude cron tools (`CronList`, `CronCreate`, `CronDelete`) are unsupported unless the current Codex runtime exposes a scheduler. In Codex, prefer the project-local `scripts/zskills-scheduler.sh` and `scripts/zskills-run-due.sh`, then installed helpers under `$PROJECT_ROOT/.agents/skills/scripts/`, `$HOME/.agents/skills/scripts/`, or legacy `$HOME/.codex/skills/scripts/`. If helpers are unavailable, report scheduling as degraded and do not claim background execution. Before starting any `run-plan finish auto` phase or any recurring `every` workflow, run `zskills-scheduler.sh runner-status --repo-path "$PROJECT_ROOT"`; if no scheduled runner is enabled, run `zskills-scheduler.sh runner-enable --repo-path "$PROJECT_ROOT"` automatically and report that autonomous scheduling was enabled. If enabling fails, stop before doing work. For `run-plan finish auto`, after this preflight passes, run exactly one plan phase in the current top-level invocation; after updating the plan/report/tracking, if another phase remains, create a fresh one-shot schedule with `zskills-scheduler.sh add --one-shot` whose args omit a fixed phase number, then exit so the next `zskills-run-due.sh`/OS cron tick starts a fresh Codex turn. When a scheduled workflow is stopped, blocked, or complete, run `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"` so this repo's OS cron entry is removed when no active schedules remain.
+Foreground runner bridge: Claude cron tools (`CronList`, `CronCreate`, `CronDelete`) are not the Codex implementation for `run-plan finish auto`. In Codex, `finish auto` must use a visible foreground parent runner that stays attached to the initiating REPL and launches one fresh `codex exec` child chunk per phase. Prefer `scripts/zskills-runner.sh`, then `$PROJECT_ROOT/.agents/skills/scripts/zskills-runner.sh`, then `$HOME/.agents/skills/scripts/zskills-runner.sh`, then legacy `$HOME/.codex/skills/scripts/zskills-runner.sh`. If the runner is unavailable, execute at most one phase, write the normal report/tracking handoff, and do not claim autonomous completion. Child prompts containing `RUNNER-MANAGED CHUNK` must not invoke the runner again; they execute exactly one incomplete phase and stop after durable plan/report/tracking evidence.
 
 Hook fallback: Claude hooks are not enforced by Codex in this environment. Compensate with inline preflight checks before commits, cherry-picks, PR merge/auto-merge, worktree deletion, or tracking cleanup: inspect status, protect unrelated changes, verify branch/mode, and preserve `.zskills/tracking`.
 
-Helper scripts: generated Codex installs include shared helpers under `.agents/skills/scripts/` for project installs or `$HOME/.agents/skills/scripts/` for user installs. Prefer project-local helpers at `$PROJECT_ROOT/scripts/` when present, otherwise use the installed helper path, with `$HOME/.codex/skills/scripts/` as a legacy fallback. If neither helper is available, use the explicit fallback instructions in the skill and report the degraded procedural path.
+Helper scripts: generated Codex installs include shared helpers under `.agents/skills/scripts/` for project installs or `$HOME/.agents/skills/scripts/` for user installs. Prefer project-local helpers at `$PROJECT_ROOT/scripts/` when present, otherwise use the installed helper path, with `$HOME/.codex/skills/scripts/` as a legacy fallback. `zskills-runner.sh`, `zskills-gate.sh`, and `zskills-post-run-invariants.sh` are Codex foreground-runner helpers. If a required helper is unavailable, use the explicit fallback instructions in the skill and report the degraded procedural path.
 
 See `~/.codex/skills/ZSKILLS_CODEX_INTEGRATION.md` for the shared adapter contract.
 <!-- ZSKILLS_CODEX_COMPAT_END -->
@@ -112,7 +112,8 @@ META_PLAN_SLUG=$(basename "$META_PLAN_PATH" .md | tr '[:upper:]_' '[:lower:]-')
 
 **Lock down the final cross-branch verification requirement immediately.**
 The pipeline will end with a top-level `/verify-changes branch` invocation
-that runs as a cron-fired turn after the meta-plan execution completes. By
+coordinated by the foreground `/run-plan finish auto` runner after the
+meta-plan execution completes. By
 creating the requirement marker NOW (before any implementation), the hook
 will block any commit on main until this final verification has been
 fulfilled. The orchestrator cannot skip the final cross-branch check.
@@ -251,17 +252,10 @@ user-facing `every N` argument on `/run-plan` is unaffected; this change
 only removes the hardcoded wrapper from `/research-and-go`'s kickoff.
 
 ```bash
-# Codex only: this kickoff relies on run-plan finish auto, so ensure the
-# scheduled runner is enabled before creating tracking or starting execution.
-ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
-[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
-if [ -x "$ZSKILLS_SCHEDULER_HELPER" ]; then
-  "$ZSKILLS_SCHEDULER_HELPER" runner-status --repo-path "$PROJECT_ROOT" >/dev/null 2>&1 || \
-  "$ZSKILLS_SCHEDULER_HELPER" runner-enable --repo-path "$PROJECT_ROOT" || {
-    echo "ERROR: /research-and-go could not enable the ZSkills scheduled runner for /run-plan finish auto."
-    exit 1
-  }
-fi
+# Codex only: this kickoff relies on run-plan finish auto. Codex finish-auto
+# uses the foreground zskills-runner.sh bridge, which stays visible in the
+# initiating REPL and launches fresh codex exec children per phase. Do not
+# enable OS cron or create background schedules for this handoff.
 
 if [ -n "$LANDING_ARG" ]; then
   RUN_PROMPT="Run /run-plan $META_PLAN_PATH finish auto $LANDING_ARG"
@@ -281,40 +275,25 @@ Concrete examples:
 - Goal "Add thermal domain. PR." -> `/run-plan $META_PLAN_PATH finish auto pr`
 - Goal "Refactor logs direct" -> `/run-plan $META_PLAN_PATH finish auto direct`
 
-This executes all implementation phases sequentially -- each delegating
-to `/run-plan` on the corresponding sub-plan via chunked cron-fired turns.
-Full verification, testing, and landing at each phase.
+This executes all implementation phases sequentially through Codex's
+foreground `/run-plan finish auto` runner. Each phase still runs in a
+fresh child Codex context, with full verification, testing, and landing.
 
-## Step 3 — Final cross-branch verification (scheduled by /run-plan, not here)
+## Step 3 - Final cross-branch verification
 
-After the meta-plan's last sub-plan completes its last phase, `/run-plan`
-Phase 5c detects the `requires.verify-changes.final.$META_PLAN_SLUG`
-marker. It schedules:
-
-1. A cron firing `Run /verify-changes branch tracking-id=$META_PLAN_SLUG`
-2. A re-entry cron firing `Run /run-plan $META_PLAN_PATH finish auto`
-
-The verify cron runs at top level (full Agent tool), performs cross-branch
-verification (`git diff main...HEAD`), and on success writes
-`fulfilled.verify-changes.final.$META_PLAN_SLUG`. The re-entry cron then
-completes Phase 5b (mark plan complete) cleanly. The user sees the verify
-report as the final turn before the pipeline is truly complete.
-
-Reference: scheduling logic lives in `/run-plan` Phase 5c (Phase A). This
-Step 3 is documentation only -- `/research-and-go` has already exited at
-the end of Step 2.
+The Codex foreground `/run-plan finish auto` runner is responsible for final
+cross-branch verification as part of its visible orchestration. Do not schedule
+background cron jobs from `/research-and-go`.
 
 ### Pipeline Cleanup
 
-Under chunked finish auto, `/research-and-go` Step 2 schedules a cron and
-exits -- Step 3 never runs in-session. Cleanup happens when the user (or a
-future automation) observes the pipeline is complete. Run
-`bash scripts/clear-tracking.sh` (interactive) to wipe tracking. Do NOT
-auto-wipe -- `requires.verify-changes.final.*` and its fulfillment marker
-are pipeline-completion records that should survive until the user confirms
-the pipeline finished.
+Under foreground finish-auto, `/research-and-go` hands execution to
+`/run-plan` and remains visible through that runner's output. Tracking cleanup
+is still explicit: run `bash scripts/clear-tracking.sh` only after the user has
+confirmed the pipeline finished. Do NOT auto-wipe tracking records.
 
-**Codex preflight:** before running `bash scripts/clear-tracking.sh`, run the shared procedural preflight helper and treat failure as a blocker:
+**Codex preflight:** before running `bash scripts/clear-tracking.sh`, run the
+shared procedural preflight helper and treat failure as a blocker:
 
 ```bash
 ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
@@ -322,9 +301,8 @@ ZSKILLS_PREFLIGHT_HELPER="$PROJECT_ROOT/scripts/zskills-preflight.sh"
 [ -x "$ZSKILLS_PREFLIGHT_HELPER" ] && "$ZSKILLS_PREFLIGHT_HELPER" --operation clear-tracking --client codex
 ```
 
-
-If the pipeline failed at any point, tracking is preserved for inspection
-and re-run. See Step 0 Re-run Handling for the resume protocol.
+If the pipeline failed at any point, tracking is preserved for inspection and
+re-run. See Step 0 Re-run Handling for the resume protocol.
 
 ## Key Rules
 

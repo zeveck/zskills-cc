@@ -114,7 +114,7 @@ def main() -> int:
 
         for required in (
             "subagent tool is available",
-            "Scheduler bridge",
+            "Foreground runner bridge",
             ".zskills/tracking",
             "never under `~/.codex/skills`",
             "direct`, `cherry-pick`, and `pr`",

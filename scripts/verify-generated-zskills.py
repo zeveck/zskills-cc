@@ -127,7 +127,7 @@ def verify_tracking_cleanup(root: Path, errors: list[str]) -> None:
 
 def verify_helper_adoption(root: Path, errors: list[str]) -> None:
     required = {
-        "run-plan": ["zskills-config.sh", "zskills-preflight.sh", "zskills-scheduler.sh", "zskills-run-due.sh"],
+        "run-plan": ["zskills-config.sh", "zskills-preflight.sh", "zskills-runner.sh", "RUNNER-MANAGED CHUNK"],
         "fix-issues": ["zskills-config.sh", "zskills-preflight.sh", "zskills-scheduler.sh", "zskills-run-due.sh"],
         "do": ["zskills-config.sh", "zskills-preflight.sh", "zskills-scheduler.sh", "zskills-run-due.sh"],
         "commit": ["zskills-preflight.sh"],
@@ -140,6 +140,17 @@ def verify_helper_adoption(root: Path, errors: list[str]) -> None:
         text = path.read_text() if path.exists() else ""
         for needle in needles:
             require(needle in text, f"{path}: missing helper adoption reference {needle}", errors)
+
+
+def verify_codex_runner_files(codex_root: Path, claude_root: Path, errors: list[str]) -> None:
+    for name in ["zskills-runner.sh", "zskills-gate.sh", "zskills-post-run-invariants.sh"]:
+        require((codex_root / "scripts" / name).exists(), f"Codex generation missing {name}", errors)
+        require(not (claude_root / "scripts" / name).exists(), f"Claude generation unexpectedly contains {name}", errors)
+    for skill_file in claude_root.glob("*/SKILL.md"):
+        text = skill_file.read_text()
+        require("RUNNER-MANAGED CHUNK" not in text, f"{skill_file}: Claude output contains Codex runner text", errors)
+        for helper in ["zskills-runner.sh", "zskills-gate.sh", "zskills-post-run-invariants.sh"]:
+            require(helper not in text, f"{skill_file}: Claude output contains Codex runner helper {helper}", errors)
 
 
 def verify_preflight_inventory(project_root: Path, generated_root: Path, errors: list[str]) -> None:
@@ -253,6 +264,7 @@ def main() -> int:
             require((codex_tmp / "scripts" / "zskills-scheduler.sh").exists(), "Codex generation missing zskills-scheduler.sh", errors)
             require((codex_tmp / "scripts" / "zskills-run-due.sh").exists(), "Codex generation missing zskills-run-due.sh", errors)
             require((codex_tmp / "scripts" / "zskills-install.sh").exists(), "Codex generation missing zskills-install.sh", errors)
+            verify_codex_runner_files(codex_tmp, claude_tmp, errors)
             verify_tracking_cleanup(codex_tmp, errors)
             verify_helper_adoption(codex_tmp, errors)
             verify_preflight_inventory(root, codex_tmp, errors)

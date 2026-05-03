@@ -63,7 +63,7 @@
       "path": "research-and-go.patch",
       "type": "unified-diff",
       "target": "codex-only",
-      "sha256": "67d550344d268d94582a189368afc883fb2e1e573454c3eb8685e01bdbbcf5f2",
+      "sha256": "eb9afd38f8395e51c06f17a942e7399f34c8232b8aa3ab9af10e4ea24b7d5232",
       "rationale": "Codex-only overlay adds procedural preflight gates for dangerous operations while preserving upstream Claude hook behavior."
     },
     {
@@ -71,8 +71,8 @@
       "path": "run-plan.patch",
       "type": "unified-diff",
       "target": "codex-only",
-      "sha256": "fa78739f80afeb6cd41faf3d5b330be574f179bf097bff380efa135f0221dce5",
-      "rationale": "Codex-only overlay adopts file-backed scheduler semantics while preserving native Claude cron instructions."
+      "sha256": "2198f3c14d77477520c2efbd6c944a3463297f64ce0a101b9e08ba06f24c4c7e",
+      "rationale": "Codex-only overlay adopts foreground runner finish-auto semantics while preserving native Claude instructions."
     },
     {
       "skill": "update-zskills",

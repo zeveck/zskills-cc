@@ -83,35 +83,40 @@
      CONFIG_CONTENT=$(cat "$CONFIG_FILE")
      if [[ "$CONFIG_CONTENT" =~ \"landing\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
        CFG_LANDING="${BASH_REMATCH[1]}"
-@@ -105,12 +157,61 @@
+@@ -105,12 +157,66 @@
  fi
  ```
 
 -**Validation:**
-+**Codex scheduler implementation:** In Codex, use the file-backed scheduler when available. Prefer the project helper, then the generated installed helper:
++**Codex foreground runner implementation:** In Codex, plain `finish auto`
++uses a visible foreground runner, not OS cron. The parent runner remains
++attached to the initiating REPL, streams orchestration and child output, and
++launches one fresh `codex exec` child chunk per phase:
 +
 +```bash
-+ZSKILLS_SCHEDULER_HELPER="$PROJECT_ROOT/scripts/zskills-scheduler.sh"
-+[ -x "$ZSKILLS_SCHEDULER_HELPER" ] || ZSKILLS_SCHEDULER_HELPER="$HOME/.codex/skills/scripts/zskills-scheduler.sh"
-+ZSKILLS_RUN_DUE_HELPER="$PROJECT_ROOT/scripts/zskills-run-due.sh"
-+[ -x "$ZSKILLS_RUN_DUE_HELPER" ] || ZSKILLS_RUN_DUE_HELPER="$HOME/.codex/skills/scripts/zskills-run-due.sh"
++ZSKILLS_RUNNER_HELPER="$PROJECT_ROOT/scripts/zskills-runner.sh"
++[ -x "$ZSKILLS_RUNNER_HELPER" ] || ZSKILLS_RUNNER_HELPER="$PROJECT_ROOT/.agents/skills/scripts/zskills-runner.sh"
++[ -x "$ZSKILLS_RUNNER_HELPER" ] || ZSKILLS_RUNNER_HELPER="$HOME/.agents/skills/scripts/zskills-runner.sh"
++[ -x "$ZSKILLS_RUNNER_HELPER" ] || ZSKILLS_RUNNER_HELPER="$HOME/.codex/skills/scripts/zskills-runner.sh"
 +```
 +
-+If `$ZSKILLS_SCHEDULER_HELPER` is executable:
++If `$ARGUMENTS` contains `finish auto`, the prompt is not already marked
++`RUNNER-MANAGED CHUNK`, and `$ZSKILLS_RUNNER_HELPER` is executable, delegate
++the whole auto run to:
 +
-+- Before starting any `finish auto` phase or registering any `every <SCHEDULE>`
-+  job, run `"$ZSKILLS_SCHEDULER_HELPER" runner-status --repo-path "$PROJECT_ROOT"`.
-+  If it fails because no runner is enabled or the runner is stale, run
-+  `"$ZSKILLS_SCHEDULER_HELPER" runner-enable --repo-path "$PROJECT_ROOT"`
-+  automatically and report that autonomous scheduling was enabled. If enabling
-+  fails, stop before doing phase work or creating schedule files.
-+- `every <SCHEDULE>` stores a schedule file with `zskills-scheduler.sh add --skill run-plan --args "<plan-file and flags without every/now>" --schedule "<SCHEDULE>" --client codex --runner-command "${ZSKILLS_RUNNER_COMMAND:-codex exec --sandbox danger-full-access}"`. Do not include a fixed phase number unless the user explicitly asked for one.
-+- `next` runs `zskills-scheduler.sh next --skill run-plan`.
-+- `stop` runs `zskills-scheduler.sh stop --skill run-plan`, then `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"`.
-+- standalone `now` runs `zskills-scheduler.sh trigger --skill run-plan` followed by `zskills-run-due.sh`.
-+- After final completion or an unrecoverable blocked state, run `zskills-scheduler.sh runner-disable-if-idle --repo-path "$PROJECT_ROOT"` so this repo's cron entry is removed when no active schedules remain.
++```bash
++RUNNER_PLAN_FILE="${PLAN_FILE:-}"
++if [ -z "$RUNNER_PLAN_FILE" ]; then
++  RUNNER_PLAN_FILE=$(printf '%s\n' "$ARGUMENTS" | awk '{for (i=1; i<=NF; i++) if ($i!="finish" && $i!="auto" && $i!="direct" && $i!="cherry-pick" && $i!="pr") {print $i; exit}}')
++fi
++"$ZSKILLS_RUNNER_HELPER" run-plan "$RUNNER_PLAN_FILE" finish auto "$LANDING_MODE" --repo "$PROJECT_ROOT"
++```
 +
-+If the helper is unavailable, report unsupported and exit without claiming background execution. OS cron can drive due jobs through the managed runner enabled by `zskills-scheduler.sh runner-enable`.
++Then return the runner's exit status without running a phase inline. If the
++runner helper is unavailable, execute at most one phase, write the normal
++report/tracking handoff, and do not claim autonomous completion. If the prompt
++contains `RUNNER-MANAGED CHUNK`, do not invoke the runner again; execute exactly
++one incomplete phase and stop after plan/report/tracking evidence.
 +
 +**Validation:**
 +
@@ -187,12 +192,19 @@
 
  Examples:
  - `/run-plan plans/FEATURE_PLAN.md` — interactive, next phase
-@@ -1397,6 +1506,8 @@
+@@ -1397,6 +1506,15 @@
  ## Phase 5c — Chunked finish auto transition (CRITICAL for finish auto mode)
 
  **This section applies when running `/run-plan <plan> finish auto`.**
 +
-+**Codex scheduler implementation:** If `zskills-scheduler.sh` and `zskills-run-due.sh` are available, `finish auto` may schedule the next top-level turn by storing a one-shot due job (`zskills-scheduler.sh add --one-shot`) whose args omit a fixed phase number, then relying on `run-plan` to re-read the plan and choose the next incomplete phase. Before starting the current phase, Codex must run `zskills-scheduler.sh runner-status --repo-path "$PROJECT_ROOT"`; if no scheduled runner is enabled or the runner is stale, run `zskills-scheduler.sh runner-enable --repo-path "$PROJECT_ROOT"` automatically and report that autonomous scheduling was enabled. If enabling fails, stop immediately before doing phase work and do not create schedule files. If no file-backed scheduler is available, do not execute the CronCreate steps in this section. Run the next phase sequentially in the current session or pause and report the next explicit command. Do not claim a one-shot cron was created. This Codex override takes precedence over the detailed Claude CronCreate steps below until scheduler emulation is enabled.
++**Codex foreground runner override:** In Codex, this Claude CronCreate section
++is not the implementation for `finish auto`. The foreground parent
++`zskills-runner.sh` owns chunking, starts fresh child `codex exec` sessions,
++streams child output back to the initiating REPL, and validates durable
++plan/report/tracking evidence between chunks. Child chunks marked
++`RUNNER-MANAGED CHUNK` must execute exactly one incomplete phase and must not
++create one-shot cron jobs. If the runner helper is unavailable, stop after at
++most one phase and report the exact next `run-plan ... finish auto` command.
 
  In chunked finish auto mode, each plan phase runs as a separate top-level
  cron-fired turn. The current turn does NOT loop back to process the next
